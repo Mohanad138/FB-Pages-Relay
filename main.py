@@ -42,7 +42,7 @@ FIRST_COMMENT = "رابط قناة التلكرام 👇\nhttps://t.me/FabriAr1"
 PROMPTS = {
     "translate_ar": """أنت محرر أخبار كرة قدم عربي. اكتب الخبر التالي بالعربية كأن شخصاً عربياً كتبه أصلاً، وليس ترجمة حرفية كلمة بكلمة.
 - حافظ على نفس تقسيم الأسطر والفراغات الموجودة في النص الأصلي.
-- لا تترجم الهاشتاغات. احذفها، وأضف في آخر المنشور 5 هاشتاغات عربية مناسبة للخبر.
+- لا تضع أي هاشتاغات إطلاقاً: احذف كل الهاشتاغات من النص، ولا تضف هاشتاغات جديدة.
 - لا تضع أي روابط أو إشارات لحسابات أو قنوات.
 - إذا كان المنشور إعلاناً أو ترويجاً (سعر، خصم، اشتراك، رعاية، كود خصم، رابط شراء) أجب بكلمة SKIP فقط. الخبر العادي ليس إعلاناً، وعند الشك انشره.
 - أجب بنص المنشور النهائي فقط بدون أي شرح.
@@ -85,6 +85,14 @@ def h(text):
 
 
 # ============ التنظيف على مستوى الكود ============
+def strip_hashtags(t):
+    t = re.sub(r"(?<!\S)#[^\s#]+", "", t or "")
+    t = re.sub(r"[ \t]+\n", "\n", t)
+    t = re.sub(r"[ \t]{2,}", " ", t)
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    return t.strip()
+
+
 def clean_text(text, source):
     t = text or ""
     # توقيع التغريدة: "— Fabrizio Romano (@FabrizioRomano)" + سطر التاريخ
@@ -95,7 +103,7 @@ def clean_text(text, source):
     t = re.sub(r"@" + re.escape(source) + r"\b", "", t, flags=re.I)
     t = re.sub(r"[ \t]+\n", "\n", t)
     t = re.sub(r"\n{3,}", "\n\n", t)
-    return t.strip()
+    return strip_hashtags(t)
 
 
 def is_rt(text):
@@ -141,7 +149,7 @@ def ai_process(raw, mode, gemini_key):
     )
     if r.status_code != 200:
         raise RuntimeError(f"Gemini error {r.status_code}: {r.text[:300]}")
-    out = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    out = strip_hashtags(r.json()["candidates"][0]["content"]["parts"][0]["text"])
     if out.upper().startswith("SKIP"):
         return None
     if mode == "translate_ar":
