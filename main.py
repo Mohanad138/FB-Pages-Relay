@@ -7,6 +7,7 @@ import hashlib
 import requests
 from telethon import TelegramClient
 from telethon.sessions import StringSession
+from telethon.tl.types import MessageMediaWebPage, MessageMediaPhoto
 
 # ============ الإعدادات ============
 # المفتاح الداخلي (مثل "fabrizio") يتتبع حالة النشر. لو غيّرت المصدر غيّر المفتاح.
@@ -18,6 +19,9 @@ PAGES = {
         "token_env": "FB_PAGE_TOKEN_1",
         "mode": "translate_ar",                # translate_ar | rephrase_ar | copy
         "skip_podcast": True,
+        "skip_rt": True,               # يتخطى الريتويت (RT @...)
+        "skip_preview_video": True,    # يتخطى معاينات فيديو X
+        "min_letters": 15,             # يتخطى منشورات المعاينة اللي نصها فاضي تقريباً (اسم + ايموجي)
     },
 }
 
@@ -83,6 +87,8 @@ def h(text):
 # ============ التنظيف على مستوى الكود ============
 def clean_text(text, source):
     t = text or ""
+    # توقيع التغريدة: "— Fabrizio Romano (@FabrizioRomano)" + سطر التاريخ
+    t = re.sub(r"[—–-]\s*Fabrizio Romano\s*\(@FabrizioRomano\)\s*(?:[A-Z][a-z]{2,8}\.? \d{1,2}, \d{4})?", "", t)
     t = re.sub(r"https?://t\.co/\S+", "", t)
     t = re.sub(r"https?://(www\.)?(t\.me|telegram\.me)/\S+", "", t)
     t = re.sub(r"@Sabereen_Social", "", t, flags=re.I)
@@ -90,6 +96,23 @@ def clean_text(text, source):
     t = re.sub(r"[ \t]+\n", "\n", t)
     t = re.sub(r"\n{3,}", "\n\n", t)
     return t.strip()
+
+
+def is_rt(text):
+    return bool(re.match(r"\s*RT\s+@", text or "", re.I))
+
+
+def letters_count(text):
+    t = re.sub(r"@\w+", "", text or "")
+    t = re.sub(r"https?://\S+", "", t)
+    return len(re.findall(r"[^\W\d_]", t))
+
+
+def preview_is_video(wp):
+    if wp is None:
+        return False
+    t = (getattr(wp, "type", "") or "").lower()
+    return t in ("video", "gif") or bool(getattr(wp, "duration", None)) or bool(getattr(wp, "embed_url", None))
 
 
 def is_podcast_promo(text):
@@ -225,6 +248,10 @@ async def run_page(client, key, cfg, state, gemini_key):
         raw = next((m.message for m in grp if m.message), "") or ""
         raw = clean_text(raw, cfg["source"])
         has_photo = any(k == "photo" for k in kinds)
+        wp = next((m.media.webpage for m in grp if isinstance(m.media, MessageMediaWebPage)), None)
+        is_preview = wp is not None and not any(isinstance(m.media, MessageMediaPhoto) for m in grp)
+        if wp is not None:
+            print(f"[{key}] preview info id={top} type={getattr(wp, 'type', None)} duration={getattr(wp, 'duration', None)} embed={bool(getattr(wp, 'embed_url', None))}")
 
         def done(why):
             print(f"[{key}] {why} {top}")
@@ -233,6 +260,12 @@ async def run_page(client, key, cfg, state, gemini_key):
 
         if "skip" in kinds:
             done("[SKIP media]"); continue
+        if cfg.get("skip_rt") and is_rt(raw):
+            done("[SKIP RT]"); continue
+        if cfg.get("skip_preview_video") and is_preview and preview_is_video(wp):
+            done("[SKIP preview video]"); continue
+        if is_preview and letters_count(raw) < cfg.get("min_letters", 15):
+            done("[SKIP empty quote]"); continue
         if not raw and not has_photo:
             done("[SKIP empty]"); continue
         if cfg.get("skip_podcast") and is_podcast_promo(raw):
