@@ -27,6 +27,14 @@ FETCH_LIMIT = 40
 GRAPH = "https://graph.facebook.com/v21.0"
 GEMINI_MODEL = "gemini-flash-latest"
 
+# نص يضاف بنهاية كل منشور + أول تعليق بعد النشر
+FOOTER = (
+    "----------------------\n"
+    "يمكنكم متابعة الاخبار لحظة بلحظة عبر قناتنا على التلكرام\n"
+    "رابط القناة في اول تعليق"
+)
+FIRST_COMMENT = "رابط قناة التلكرام 👇\nhttps://t.me/FabriAr1"
+
 PROMPTS = {
     "translate_ar": """أنت محرر أخبار كرة قدم عربي. اكتب الخبر التالي بالعربية كأن شخصاً عربياً كتبه أصلاً، وليس ترجمة حرفية كلمة بكلمة.
 - حافظ على نفس تقسيم الأسطر والفراغات الموجودة في النص الأصلي.
@@ -155,6 +163,15 @@ def fb_post(page_id, token, text, images):
     return fb_check(requests.post(f"{base}/feed", data=data, timeout=60))
 
 
+def fb_comment(token, post_id, message):
+    r = requests.post(
+        f"{GRAPH}/{post_id}/comments",
+        data={"message": message, "access_token": token},
+        timeout=60,
+    )
+    return fb_check(r)
+
+
 # ============ تيليجرام ============
 def classify(m):
     """photo | text | skip"""
@@ -239,7 +256,17 @@ async def run_page(client, key, cfg, state, gemini_key):
         if not text and not images:
             done("[SKIP nothing to post]"); continue
 
-        fb_post(page_id, token, text, images)   # يرمي خطأ لو فشل فلا تتقدم الحالة
+        text = f"{text}\n\n{FOOTER}" if text else FOOTER
+
+        res = fb_post(page_id, token, text, images)   # يرمي خطأ لو فشل فلا تتقدم الحالة
+        post_id = res.get("post_id") or res.get("id")
+
+        # التعليق الأول: لو فشل لا نفشل المنشور (وإلا ينشر مرة ثانية)
+        try:
+            fb_comment(token, post_id, FIRST_COMMENT)
+        except Exception as e:
+            print(f"[{key}] WARNING comment failed for {post_id}: {e}")
+
         if raw:
             st["hashes"] = (st["hashes"] + [h(raw)])[-100:]
         done("[OK]")
