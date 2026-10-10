@@ -3,6 +3,7 @@ import re
 import sys
 import json
 import asyncio
+import time
 import hashlib
 import requests
 from telethon import TelegramClient
@@ -29,7 +30,8 @@ STATE_FILE = "state.json"
 FIRST_RUN_COUNT = 5
 FETCH_LIMIT = 40
 GRAPH = "https://graph.facebook.com/v21.0"
-GEMINI_MODEL = "gemini-flash-latest"
+# الأرخص أولاً (الترجمة بسيطة). لو انتهت حصته أو ما توفر ينتقل للي بعده (لكل موديل حصة مستقلة)
+GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest"]
 
 # نص يضاف بنهاية كل منشور + أول تعليق بعد النشر
 FOOTER = (
@@ -40,14 +42,13 @@ FOOTER = (
 FIRST_COMMENT = "رابط قناة التلكرام 👇\nhttps://t.me/FabriAr1"
 
 PROMPTS = {
-    "translate_ar": """أنت محرر أخبار كرة قدم عربي. اكتب الخبر التالي بالعربية كأن شخصاً عربياً كتبه أصلاً، وليس ترجمة حرفية كلمة بكلمة.
-- حافظ على نفس تقسيم الأسطر والفراغات الموجودة في النص الأصلي.
-- لا تضع أي هاشتاغات إطلاقاً: احذف كل الهاشتاغات من النص، ولا تضف هاشتاغات جديدة.
-- لا تضع أي روابط أو إشارات لحسابات أو قنوات.
-- إذا كان المنشور إعلاناً أو ترويجاً (سعر، خصم، اشتراك، رعاية، كود خصم، رابط شراء) أجب بكلمة SKIP فقط. الخبر العادي ليس إعلاناً، وعند الشك انشره.
-- أجب بنص المنشور النهائي فقط بدون أي شرح.
+    "translate_ar": """ترجم خبر كرة القدم التالي إلى العربية بأسلوب طبيعي كأن كاتباً عربياً كتبه (ليس حرفياً).
+- حافظ على تقسيم الأسطر.
+- بدون هاشتاغات، وبدون روابط أو إشارات لحسابات.
+- إذا كان إعلاناً أو ترويجاً (سعر، خصم، اشتراك، رعاية، كود خصم، رابط شراء) أجب SKIP فقط. وعند الشك انشره.
+- أجب بالنص النهائي فقط.
 
-النص الأصلي:
+النص:
 """,
     "rephrase_ar": """أعد صياغة الخبر التالي بالعربية بأسلوب صحفي طبيعي مع الحفاظ على كل الأرقام والتفاصيل.
 - إذا كان إعلاناً أو ترويجاً مدفوعاً أجب بكلمة SKIP فقط، وعند الشك انشره.
@@ -138,18 +139,41 @@ def enforce_here_we_go(raw, out):
 
 
 # ============ Gemini ============
+def gemini_generate(prompt, gemini_key):
+    last = "no model tried"
+    for model in GEMINI_MODELS:
+        for attempt in range(2):
+            r = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                params={"key": gemini_key},
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.3, "maxOutputTokens": 700},
+                },
+                timeout=90,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                try:
+                    return data["candidates"][0]["content"]["parts"][0]["text"]
+                except Exception:
+                    raise RuntimeError(f"Gemini returned no text ({model}): {str(data)[:300]}")
+            last = f"{model} -> {r.status_code}: {r.text[:200]}"
+            print(f"[gemini] {last}")
+            # 429 بسبب الدقيقة (مو اليوم): نصبر شوية ونعيد مرة وحدة
+            if r.status_code == 429 and "PerDay" not in r.text and attempt == 0:
+                time.sleep(25)
+                continue
+            break
+        if not any(c in last for c in ("429", "404", "503")):
+            break  # خطأ غريب: ما ننتقل لموديل ثاني
+    raise RuntimeError(f"Gemini failed: {last}")
+
+
 def ai_process(raw, mode, gemini_key):
     if mode == "copy":
         return raw
-    r = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent",
-        params={"key": gemini_key},
-        json={"contents": [{"parts": [{"text": PROMPTS[mode] + raw}]}]},
-        timeout=90,
-    )
-    if r.status_code != 200:
-        raise RuntimeError(f"Gemini error {r.status_code}: {r.text[:300]}")
-    out = strip_hashtags(r.json()["candidates"][0]["content"]["parts"][0]["text"])
+    out = strip_hashtags(gemini_generate(PROMPTS[mode] + raw, gemini_key))
     if out.upper().startswith("SKIP"):
         return None
     if mode == "translate_ar":
