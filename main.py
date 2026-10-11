@@ -13,11 +13,13 @@ from telethon.tl.types import MessageMediaWebPage, MessageMediaPhoto
 # ============ الإعدادات ============
 # المفتاح الداخلي (مثل "fabrizio") يتتبع حالة النشر. لو غيّرت المصدر غيّر المفتاح.
 # لإضافة صفحة ثانية: انسخ كتلة وغيّر المصدر وأسماء الأسرار (FB_PAGE_ID_2 ...).
+# لتعطيل إنستغرام لصفحة معينة: احذف سطر ig_user_id_env منها.
 PAGES = {
     "fabrizio": {
         "source": "FabrizioRomanoTG",          # يوزرنيم القناة العامة بدون @
         "page_id_env": "FB_PAGE_ID_1",
         "token_env": "FB_PAGE_TOKEN_1",
+        "ig_user_id_env": "IG_USER_ID_1",      # حساب الإنستغرام المربوط بالصفحة
         "mode": "translate_ar",                # translate_ar | rephrase_ar | copy
         "skip_podcast": True,
         "skip_rt": True,               # يتخطى الريتويت (RT @...)
@@ -30,16 +32,25 @@ STATE_FILE = "state.json"
 FIRST_RUN_COUNT = 5
 FETCH_LIMIT = 40
 GRAPH = "https://graph.facebook.com/v21.0"
+IG_MAX_TRIES = 3          # لو منشور فشل على إنستغرام 3 مرات متتالية نتخطاه
+IG_CAPTION_MAX = 2200
 # الأرخص أولاً (الترجمة بسيطة). لو انتهت حصته أو ما توفر ينتقل للي بعده (لكل موديل حصة مستقلة)
 GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest"]
 
-# نص يضاف بنهاية كل منشور + أول تعليق بعد النشر
+# نص يضاف بنهاية كل منشور + أول تعليق بعد النشر (فيسبوك)
 FOOTER = (
     "----------------------\n"
     "يمكنكم متابعة الاخبار لحظة بلحظة عبر قناتنا على التلكرام\n"
     "رابط القناة في اول تعليق"
 )
 FIRST_COMMENT = "رابط قناة التلكرام 👇\nhttps://t.me/FabriAr1"
+
+# فوتر إنستغرام: الرابط في البايو وبدون تعليق
+IG_FOOTER = (
+    "----------------------\n"
+    "يمكنكم متابعة الاخبار لحظة بلحظة عبر قناتنا على التلكرام\n"
+    "رابط القناة في البايو"
+)
 
 PROMPTS = {
     "translate_ar": """ترجم خبر كرة القدم التالي إلى العربية بأسلوب طبيعي كأن كاتباً عربياً كتبه (ليس حرفياً).
@@ -227,6 +238,70 @@ def fb_comment(token, post_id, message):
     return fb_check(r)
 
 
+# ============ إنستغرام ============
+def fb_photo_url(page_id, token, img):
+    """نرفع الصورة للصفحة كصورة غير منشورة (ما تظهر لأحد) ونأخذ رابطها العام لإنستغرام."""
+    b = fb_check(requests.post(
+        f"{GRAPH}/{page_id}/photos",
+        data={"access_token": token, "published": "false"},
+        files={"source": ("img.jpg", img)}, timeout=120))
+    info = fb_check(requests.get(
+        f"{GRAPH}/{b['id']}",
+        params={"fields": "images", "access_token": token}, timeout=60))
+    imgs = info.get("images") or []
+    if not imgs:
+        raise RuntimeError(f"no image url returned for photo {b['id']}")
+    return imgs[0]["source"]          # الأكبر أولاً
+
+
+def ig_create(ig_id, token, **params):
+    params["access_token"] = token
+    return fb_check(requests.post(f"{GRAPH}/{ig_id}/media", data=params, timeout=60))["id"]
+
+
+def ig_wait(container, token):
+    for _ in range(18):               # حتى 90 ثانية
+        r = fb_check(requests.get(
+            f"{GRAPH}/{container}",
+            params={"fields": "status_code,status", "access_token": token}, timeout=60))
+        s = r.get("status_code")
+        if s == "FINISHED":
+            return
+        if s in ("ERROR", "EXPIRED"):
+            raise RuntimeError(f"Instagram container {s}: {r.get('status')}")
+        time.sleep(5)
+    raise RuntimeError("Instagram container timeout")
+
+
+def ig_publish(ig_id, token, creation_id):
+    return fb_check(requests.post(
+        f"{GRAPH}/{ig_id}/media_publish",
+        data={"creation_id": creation_id, "access_token": token}, timeout=60))
+
+
+def build_ig_caption(text):
+    if not text:
+        return IG_FOOTER
+    room = IG_CAPTION_MAX - len(IG_FOOTER) - 2
+    if len(text) > room:
+        text = text[:room - 1].rstrip() + "…"
+    return f"{text}\n\n{IG_FOOTER}"
+
+
+def ig_post(page_id, ig_id, token, text, images):
+    caption = build_ig_caption(text)
+    urls = [fb_photo_url(page_id, token, img) for img in images[:10]]
+    if len(urls) == 1:
+        c = ig_create(ig_id, token, image_url=urls[0], caption=caption)
+    else:
+        kids = [ig_create(ig_id, token, image_url=u, is_carousel_item="true") for u in urls]
+        for k in kids:
+            ig_wait(k, token)
+        c = ig_create(ig_id, token, media_type="CAROUSEL", children=",".join(kids), caption=caption)
+    ig_wait(c, token)
+    return ig_publish(ig_id, token, c)
+
+
 # ============ تيليجرام ============
 def classify(m):
     """photo | text | skip"""
@@ -267,15 +342,50 @@ async def fetch_new(client, source, last_id):
 async def run_page(client, key, cfg, state, gemini_key):
     page_id = need(cfg["page_id_env"])
     token = need(cfg["token_env"])
-    st = state.setdefault(key, {"last_id": None, "hashes": []})
+    ig_id = need(cfg["ig_user_id_env"]) if cfg.get("ig_user_id_env") else None
 
-    items, last_id = await fetch_new(client, cfg["source"], st["last_id"])
+    st = state.setdefault(key, {"last_id": None, "hashes": []})
+    st.setdefault("hashes", [])
+    if ig_id:
+        st.setdefault("ig_last_id", None)
+        st.setdefault("ig_hashes", [])
+
+    # كل منصة لها تقدمها الخاص: فشل إنستغرام ما يوقف فيسبوك والعكس
+    start = st["last_id"]
+    if start is not None and ig_id and st["ig_last_id"] is not None:
+        start = min(start, st["ig_last_id"])
+    items, first = await fetch_new(client, cfg["source"], start)
     if st["last_id"] is None:
-        st["last_id"] = last_id
+        st["last_id"] = first
+    if ig_id and st["ig_last_id"] is None:
+        # أول تفعيل لإنستغرام: نبدأ من الجديد فقط بدون نشر القديم
+        st["ig_last_id"] = st["last_id"]
     print(f"[{key}] {len(items)} new items")
+
+    blocked = {"fb": False, "ig": False}
+    failed = False
 
     for grp in items:
         top = max(m.id for m in grp)
+
+        todo = []
+        if top > st["last_id"] and not blocked["fb"]:
+            todo.append("fb")
+        if ig_id and top > st["ig_last_id"] and not blocked["ig"]:
+            todo.append("ig")
+        if not todo:
+            continue
+
+        def advance(platforms, why=None):
+            for p in platforms:
+                if p == "fb":
+                    st["last_id"] = top
+                else:
+                    st["ig_last_id"] = top
+            save_state(state)
+            if why:
+                print(f"[{key}] {why} {top}")
+
         kinds = [classify(m) for m in grp]
         raw = next((m.message for m in grp if m.message), "") or ""
         raw = clean_text(raw, cfg["source"])
@@ -285,31 +395,31 @@ async def run_page(client, key, cfg, state, gemini_key):
         if wp is not None:
             print(f"[{key}] preview info id={top} type={getattr(wp, 'type', None)} duration={getattr(wp, 'duration', None)} embed={bool(getattr(wp, 'embed_url', None))}")
 
-        def done(why):
-            print(f"[{key}] {why} {top}")
-            st["last_id"] = top
-            save_state(state)
-
         if "skip" in kinds:
-            done("[SKIP media]"); continue
+            advance(todo, "[SKIP media]"); continue
         if cfg.get("skip_rt") and is_rt(raw):
-            done("[SKIP RT]"); continue
+            advance(todo, "[SKIP RT]"); continue
         if cfg.get("skip_preview_video") and is_preview and preview_is_video(wp):
-            done("[SKIP preview video]"); continue
+            advance(todo, "[SKIP preview video]"); continue
         if is_preview and letters_count(raw) < cfg.get("min_letters", 15):
-            done("[SKIP empty quote]"); continue
+            advance(todo, "[SKIP empty quote]"); continue
         if not raw and not has_photo:
-            done("[SKIP empty]"); continue
+            advance(todo, "[SKIP empty]"); continue
         if cfg.get("skip_podcast") and is_podcast_promo(raw):
-            done("[SKIP podcast]"); continue
-        if raw and h(raw) in st["hashes"]:
-            done("[SKIP duplicate]"); continue
+            advance(todo, "[SKIP podcast]"); continue
+
+        # منع التكرار لكل منصة على حدة
+        hh = h(raw) if raw else None
+        post_fb = "fb" in todo and not (hh and hh in st["hashes"])
+        post_ig = "ig" in todo and not (hh and hh in st["ig_hashes"])
+        if not post_fb and not post_ig:
+            advance(todo, "[SKIP duplicate]"); continue
 
         text = ""
         if raw:
-            text = ai_process(raw, cfg["mode"], gemini_key)
+            text = ai_process(raw, cfg["mode"], gemini_key)   # لو فشل Gemini يتوقف التشغيل وتبقى الحالة
             if text is None:
-                done("[SKIP ad]"); continue
+                advance(todo, "[SKIP ad]"); continue
 
         images = []
         for m, k in zip(grp, kinds):
@@ -319,22 +429,60 @@ async def run_page(client, key, cfg, state, gemini_key):
                     images.append(data)
 
         if not text and not images:
-            done("[SKIP nothing to post]"); continue
+            advance(todo, "[SKIP nothing to post]"); continue
 
-        text = f"{text}\n\n{FOOTER}" if text else FOOTER
+        if post_ig and not images:
+            print(f"[{key}] IG: text-only post skipped {top}")
+            post_ig = False
 
-        res = fb_post(page_id, token, text, images)   # يرمي خطأ لو فشل فلا تتقدم الحالة
-        post_id = res.get("post_id") or res.get("id")
+        idle = [p for p in todo if not ((p == "fb" and post_fb) or (p == "ig" and post_ig))]
+        if idle:
+            advance(idle)
+        if not post_fb and not post_ig:
+            continue
 
-        # التعليق الأول: لو فشل لا نفشل المنشور (وإلا ينشر مرة ثانية)
-        try:
-            fb_comment(token, post_id, FIRST_COMMENT)
-        except Exception as e:
-            print(f"[{key}] WARNING comment failed for {post_id}: {e}")
+        # ---------- فيسبوك ----------
+        if post_fb:
+            try:
+                ftext = f"{text}\n\n{FOOTER}" if text else FOOTER
+                res = fb_post(page_id, token, ftext, images)
+                post_id = res.get("post_id") or res.get("id")
+                # التعليق الأول: لو فشل لا نفشل المنشور (وإلا ينشر مرة ثانية)
+                try:
+                    fb_comment(token, post_id, FIRST_COMMENT)
+                except Exception as e:
+                    print(f"[{key}] WARNING comment failed for {post_id}: {e}")
+                if hh:
+                    st["hashes"] = (st["hashes"] + [hh])[-100:]
+                advance(["fb"], "[FB OK]")
+            except Exception as e:
+                blocked["fb"] = True
+                failed = True
+                print(f"[{key}] FB FAILED {top}: {e}")
 
-        if raw:
-            st["hashes"] = (st["hashes"] + [h(raw)])[-100:]
-        done("[OK]")
+        # ---------- إنستغرام ----------
+        if post_ig:
+            try:
+                ig_post(page_id, ig_id, token, text, images)
+                if hh:
+                    st["ig_hashes"] = (st["ig_hashes"] + [hh])[-100:]
+                st["ig_fail"] = {}
+                advance(["ig"], "[IG OK]")
+            except Exception as e:
+                print(f"[{key}] IG FAILED {top}: {e}")
+                f = st.get("ig_fail") or {}
+                n = f.get("n", 0) + 1 if f.get("id") == top else 1
+                st["ig_fail"] = {"id": top, "n": n}
+                if n >= IG_MAX_TRIES:
+                    st["ig_fail"] = {}
+                    advance(["ig"], f"[IG GIVING UP after {n} tries]")
+                else:
+                    blocked["ig"] = True
+                    failed = True
+                    save_state(state)
+
+    if failed:
+        raise RuntimeError("one or more posts failed (see log above)")
 
 
 async def main():
