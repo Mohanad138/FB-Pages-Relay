@@ -33,6 +33,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FB_PAGE_ID_1: ${{ secrets.FB_PAGE_ID_1 }}
           FB_PAGE_TOKEN_1: ${{ secrets.FB_PAGE_TOKEN_1 }}
+          IG_USER_ID_1: ${{ secrets.IG_USER_ID_1 }}
         run: python main.py
 
       - name: Save state
