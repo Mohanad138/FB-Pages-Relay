@@ -15,16 +15,15 @@ from telethon.tl.types import MessageMediaWebPage, MessageMediaPhoto
 # لإضافة صفحة ثانية: انسخ كتلة وغيّر المصدر وأسماء الأسرار (FB_PAGE_ID_2 ...).
 # لتعطيل إنستغرام لصفحة معينة: احذف سطر ig_user_id_env منها.
 PAGES = {
-    "fabrizio": {
-        "source": "FabrizioRomanoTG",          # يوزرنيم القناة العامة بدون @
+    "offside": {
+        "source": "Offsideahdaff",             # يوزرنيم القناة العامة بدون @
         "page_id_env": "FB_PAGE_ID_1",
         "token_env": "FB_PAGE_TOKEN_1",
         "ig_user_id_env": "IG_USER_ID_1",      # حساب الإنستغرام المربوط بالصفحة
-        "mode": "translate_ar",                # translate_ar | rephrase_ar | copy
-        "skip_podcast": True,
-        "skip_rt": True,               # يتخطى الريتويت (RT @...)
-        "skip_preview_video": True,    # يتخطى معاينات فيديو X
-        "min_letters": 15,             # يتخطى منشورات المعاينة اللي نصها فاضي تقريباً (اسم + ايموجي)
+        "mode": "offside_ar",                  # translate_ar | rephrase_ar | offside_ar | copy
+        "require_photo_and_text": True,        # ينشر فقط (صورة مع نص): بدون فيديو أو نص فقط
+        "skip_status_posts": True,             # يتخطى بداية المباراة / نهاية الشوط الأول / بداية الشوط الثاني
+        "strip_mentions": True,                # يحذف أي @منشن من النص
     },
 }
 
@@ -70,6 +69,24 @@ PROMPTS = {
 }
 
 
+PROMPTS["offside_ar"] = """أنت محرر أخبار كرة قدم عربي. أمامك منشور من قناة تلكرام. أعد صياغته بالعربية الفصحى المبسطة بأسلوب صحفي واضح مع الحفاظ على كل الأسماء والأرقام والنتائج.
+
+قواعد القرار (طبقها بالترتيب، وأول قاعدة تنطبق تحسم):
+1) إذا كان إعلاناً أو ترويجاً (اشتراك، قناة أو موقع أو تطبيق للمشاهدة، كود خصم، رعاية، رابط بيع، مراهنات) أجب SKIP فقط.
+2) إذا كان الموضوع خارج كرة القدم (رياضة أخرى، سياسة، فن، أخبار عامة...) أجب SKIP فقط.
+3) إذا كان متعلقاً بالكرة العربية أجب SKIP فقط. الكرة العربية تعني: الدوريات والكؤوس في الدول العربية (السعودي، المصري، الإماراتي، القطري، المغربي، الجزائري، العراقي وغيرها)، وأندية هذه الدول ومنتخباتها، والبطولات العربية. عند الشك في أن الخبر عن الكرة العربية أجب SKIP.
+   الاستثناء الوحيد: إذا كان الخبر عن كريستيانو رونالدو أو عن لاعب عالمي معروف جداً بمستواه يلعب في دوري عربي، يُنشر حتى لو كان بالدوري العربي.
+   لاعب عربي يلعب في نادٍ أوروبي (مثل محمد صلاح أو أشرف حكيمي) ليس كرة عربية، فيُنشر خبره.
+4) إذا كان إشعاراً بانطلاق أو بداية المباراة، أو نهاية أو استراحة الشوط الأول، أو بداية الشوط الثاني، أجب SKIP فقط.
+5) إذا كان خبر نهاية المباراة (انتهاء اللقاء بالنتيجة النهائية): اكتبه بصياغة جديدة بسيطة وواضحة في 2 إلى 4 أسطر قصيرة: سطر للنتيجة النهائية مثل "انتهت مباراة (الفريق الأول) و(الفريق الثاني) بنتيجة X-Y"، ثم أسماء المسجلين ودقائق الأهداف إن وردت. لا تضف أي معلومة غير موجودة بالنص.
+6) غير ذلك (خبر، هدف، بطاقة، انتقال، تصريح...) أعد صياغته بنفس تفاصيله بدون إضافة.
+
+قواعد عامة: بدون هاشتاغات وروابط وإشارات @، وبدون أي ذكر لاسم القناة أو عبارات اشتراك ومتابعة. حافظ على تقسيم الأسطر. أجب بالنص النهائي فقط، أو بكلمة SKIP فقط.
+
+النص الأصلي:
+"""
+
+
 def need(name):
     v = os.environ.get(name, "").strip()
     if not v:
@@ -105,7 +122,7 @@ def strip_hashtags(t):
     return t.strip()
 
 
-def clean_text(text, source):
+def clean_text(text, source, strip_mentions=False):
     t = text or ""
     # توقيع التغريدة: "— Fabrizio Romano (@FabrizioRomano)" + سطر التاريخ
     t = re.sub(r"[—–-]\s*Fabrizio Romano\s*\(@FabrizioRomano\)\s*(?:[A-Z][a-z]{2,8}\.? \d{1,2}, \d{4})?", "", t)
@@ -113,6 +130,8 @@ def clean_text(text, source):
     t = re.sub(r"https?://(www\.)?(t\.me|telegram\.me)/\S+", "", t)
     t = re.sub(r"@Sabereen_Social", "", t, flags=re.I)
     t = re.sub(r"@" + re.escape(source) + r"\b", "", t, flags=re.I)
+    if strip_mentions:
+        t = re.sub(r"@\w+", "", t)
     t = re.sub(r"[ \t]+\n", "\n", t)
     t = re.sub(r"\n{3,}", "\n\n", t)
     return strip_hashtags(t)
@@ -138,6 +157,27 @@ def preview_is_video(wp):
 def is_podcast_promo(text):
     t = text.lower()
     return bool(re.match(r"\s*new pod", t)) and "here we go" not in t
+
+
+def norm_ar(t):
+    t = re.sub(r"[\u064B-\u065F\u0640]", "", t or "")
+    t = re.sub(r"[أإآ]", "ا", t)
+    return t.replace("ى", "ي").replace("ة", "ه")
+
+
+# منشورات حالة المباراة (تُفحص من بداية النص فقط حتى لا نتخطى أخباراً تذكر "الشوط الأول" داخل التفاصيل)
+_STATUS_RE = [
+    r"^(?:انطلاق|انطلقت|بدايه|بدء|بدات|بدا)\s+(?:ال)?(?:مباراه|لقاء|مواجهه)",
+    r"^(?:نهايه|انتهاء|انتهي|انتهت|استراحه)\s+(?:ال)?شوط\s+(?:ال)?اول",
+    r"^(?:ال)?استراحه",
+    r"^بين\s+الشوطين",
+    r"^(?:انطلاق|انطلقت|بدايه|بدء|بدات|بدا|استئناف)\s+(?:ال)?شوط\s+(?:ال)?ثاني",
+]
+
+
+def is_status_post(text):
+    t = re.sub(r"^[^\w]+", "", norm_ar(text))     # يشيل الايموجي والرموز من البداية
+    return any(re.match(p, t) for p in _STATUS_RE)
 
 
 def enforce_here_we_go(raw, out):
@@ -388,15 +428,20 @@ async def run_page(client, key, cfg, state, gemini_key):
 
         kinds = [classify(m) for m in grp]
         raw = next((m.message for m in grp if m.message), "") or ""
-        raw = clean_text(raw, cfg["source"])
+        raw = clean_text(raw, cfg["source"], cfg.get("strip_mentions", False))
         has_photo = any(k == "photo" for k in kinds)
         wp = next((m.media.webpage for m in grp if isinstance(m.media, MessageMediaWebPage)), None)
         is_preview = wp is not None and not any(isinstance(m.media, MessageMediaPhoto) for m in grp)
+        real_photo = any(isinstance(m.media, MessageMediaPhoto) for m in grp)
         if wp is not None:
             print(f"[{key}] preview info id={top} type={getattr(wp, 'type', None)} duration={getattr(wp, 'duration', None)} embed={bool(getattr(wp, 'embed_url', None))}")
 
         if "skip" in kinds:
             advance(todo, "[SKIP media]"); continue
+        if cfg.get("require_photo_and_text") and not (real_photo and raw):
+            advance(todo, "[SKIP not photo+text]"); continue
+        if cfg.get("skip_status_posts") and is_status_post(raw):
+            advance(todo, "[SKIP match status]"); continue
         if cfg.get("skip_rt") and is_rt(raw):
             advance(todo, "[SKIP RT]"); continue
         if cfg.get("skip_preview_video") and is_preview and preview_is_video(wp):
