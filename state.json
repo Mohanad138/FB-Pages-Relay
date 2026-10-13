@@ -1,6 +1,6 @@
 {
   "fabrizio": {
-    "last_id": 67254,
+    "last_id": 67259,
     "hashes": [
       "b33775955411f9b1ad2b2cc62424810a9775b158",
       "88716d84495863ba90479a493c2d99f62b466eb5",
@@ -103,7 +103,11 @@
       "b9ae279e8391f9ca315e0e2a6afd2bfa554a492f",
       "3ffc8417478489b7ddfe329c7fe2c09b514413e0",
       "bd74029967ed34e037440aba42e4431b94932ffc",
-      "af6c6324458009cfa921e0d185fa8bf2ede55953"
+      "af6c6324458009cfa921e0d185fa8bf2ede55953",
+      "20956cd753aa6c1d5887c333958009330cdc33bf",
+      "353d400b1ea386f1362ae0fc88369c41da14c0fd",
+      "c5bf7c9b68808525234b21fa72ff76a195a75f98",
+      "43ccf98f5fe8114894e8cfbe5810ab4fd51396df"
     ],
     "ig_last_id": 67203,
     "ig_hashes": [
@@ -155,6 +159,46 @@
         "facebook_post_id": "585921651272636_122184219470824376",
         "comment_status": "published",
         "instagram_post_id": "18134297269735990"
+      },
+      "67255": {
+        "source_id": 67255,
+        "source_hash": "20956cd753aa6c1d5887c333958009330cdc33bf",
+        "facebook_status": "published",
+        "instagram_status": "published",
+        "created_at": 1791925732,
+        "facebook_post_id": "585921651272636_122184222638824376",
+        "comment_status": "published",
+        "instagram_post_id": "18130465480793627"
+      },
+      "67256": {
+        "source_id": 67256,
+        "source_hash": "353d400b1ea386f1362ae0fc88369c41da14c0fd",
+        "facebook_status": "published",
+        "instagram_status": "published",
+        "created_at": 1791925754,
+        "facebook_post_id": "585921651272636_122184222794824376",
+        "comment_status": "published",
+        "instagram_post_id": "18030231098916436"
+      },
+      "67258": {
+        "source_id": 67258,
+        "source_hash": "c5bf7c9b68808525234b21fa72ff76a195a75f98",
+        "facebook_status": "published",
+        "instagram_status": "published",
+        "created_at": 1791925773,
+        "facebook_post_id": "585921651272636_122184222992824376",
+        "comment_status": "published",
+        "instagram_post_id": "17977287024132070"
+      },
+      "67259": {
+        "source_id": 67259,
+        "source_hash": "43ccf98f5fe8114894e8cfbe5810ab4fd51396df",
+        "facebook_status": "published",
+        "instagram_status": "published",
+        "created_at": 1791925792,
+        "facebook_post_id": "585921651272636_122184223154824376",
+        "comment_status": "published",
+        "instagram_post_id": "17913888390544285"
       }
     }
   },
