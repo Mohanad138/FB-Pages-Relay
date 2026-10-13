@@ -10,58 +10,56 @@ from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.types import MessageMediaWebPage, MessageMediaPhoto
 
-# ============ الإعدادات ============
-# المفتاح الداخلي (مثل "fabrizio") يتتبع حالة النشر. لو غيّرت المصدر غيّر المفتاح.
-# لإضافة صفحة ثانية: انسخ كتلة وغيّر المصدر وأسماء الأسرار (FB_PAGE_ID_2 ...).
+# ==================== إعدادات ====================
 PAGES = {
     "fabrizio": {
-        "source": "FabrizioRomanoTG",          # يوزرنيم القناة العامة بدون @
+        "source": "FabrizioRomanoTG",
         "page_id_env": "FB_PAGE_ID_1",
         "token_env": "FB_PAGE_TOKEN_1",
-        "mode": "translate_ar",                # translate_ar | rephrase_ar | copy
+        "ig_id_env": "IG_USER_ID_1",
+        "mode": "translate_ar",
         "skip_podcast": True,
-        "skip_rt": True,               # يتخطى الريتويت (RT @...)
-        "skip_preview_video": True,    # يتخطى معاينات فيديو X
-        "min_letters": 15,             # يتخطى منشورات المعاينة اللي نصها فاضي تقريباً (اسم + ايموجي)
-        "min_score": 6,                # ينشر فقط الأخبار اللي درجة تفاعلها المتوقعة >= هذا الرقم (0 = ينشر كل شي)
+        "skip_rt": True,
+        "skip_preview_video": True,
+        "min_letters": 15,
+        "min_score": 6,
     },
 }
 
 STATE_FILE = "state.json"
 FIRST_RUN_COUNT = 5
-COOLDOWN_SECONDS = 300   # بعد فشل Gemini: استراحة 5 دقائق قبل المحاولة التالية
 FETCH_LIMIT = 40
+COOLDOWN_SECONDS = 300
 GRAPH = "https://graph.facebook.com/v21.0"
-# الأرخص أولاً (الترجمة بسيطة). لو انتهت حصته أو ما توفر ينتقل للي بعده (لكل موديل حصة مستقلة)
 GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemma-3-27b-it"]
+HTTP = requests.Session()
+HTTP.headers.update({"User-Agent": "FB-Pages-Relay/2.0"})
 
-# نص يضاف بنهاية كل منشور + أول تعليق بعد النشر
 FOOTER = (
     "----------------------\n"
-    "يمكنكم متابعة الاخبار لحظة بلحظة عبر قناتنا على التلكرام\n"
-    "رابط القناة في اول تعليق"
+    "يمكنكم متابعة الأخبار لحظة بلحظة عبر قناتنا على التلغرام\n"
+    "رابط القناة في أول تعليق"
 )
-FIRST_COMMENT = "رابط قناة التلكرام 👇\nhttps://t.me/FabriAr1"
+FIRST_COMMENT = "رابط قناة التلغرام 👇\nhttps://t.me/FabriAr1"
 
 PROMPTS = {
     "translate_ar": """أنت محرر صفحة أخبار كرة قدم عربية هدفها جذب التفاعل.
-أعطِ الخبر درجة من 1 إلى 10 حسب احتمال تفاعل الجمهور العربي معه:
-- 9-10: صفقة مؤكدة أو Here we go، أو نجم عالمي (ميسي، رونالدو، مبابي، هالاند، صلاح...)، أو نادٍ كبير (ريال مدريد، برشلونة، سيتي، يونايتد، ليفربول، أرسنال، تشلسي، باريس، بايرن، يوفنتوس، ميلان، إنتر، الهلال، النصر...)، أو تعيين/إقالة مدرب كبير.
-- 6-8: صفقة متقدمة أو مفاوضات جدية أو تجديد عقد أو إصابة نجم أو لاعب عربي معروف.
-- 3-5: شائعات عادية أو أندية متوسطة أو لاعبون أقل شهرة.
-- 1-2: أخبار هامشية أو دوريات صغيرة أو ناشئون مجهولون.
+قيّم احتمال تفاعل الجمهور العربي من 1 إلى 10:
+9-10: Here We Go أو صفقة مؤكدة أو نجم عالمي أو نادٍ كبير أو إقالة/تعيين مدرب كبير.
+7-8: مفاوضات جدية أو تجديد عقد أو إصابة نجم أو لاعب عربي معروف.
+6: خبر مهم لجمهور كرة القدم.
+1-5: خبر هامشي أو شائعة ضعيفة أو لاعب/نادٍ قليل الشهرة.
 
-الصيغة: السطر الأول فقط SCORE: الرقم، ثم ترجم الخبر إلى العربية بأسلوب طبيعي كأن كاتباً عربياً كتبه (ليس حرفياً).
-- حافظ على تقسيم الأسطر.
-- بدون هاشتاغات، وبدون روابط أو إشارات لحسابات.
-- إذا كان إعلاناً أو ترويجاً (سعر، خصم، اشتراك، رعاية، كود خصم، رابط شراء) أجب SKIP فقط. وعند الشك انشره.
-- أجب بالصيغة المطلوبة فقط بدون أي شرح.
+أخرج السطر الأول هكذا SCORE: رقم، ثم ترجم الخبر إلى عربية طبيعية جذابة دون مبالغة أو اختلاق.
+حافظ على الأرقام والتفاصيل وتقسيم الأسطر. لا هاشتاغات ولا روابط ولا إشارات حسابات.
+إذا كان إعلاناً أو ترويجاً مدفوعاً فأجب SKIP فقط. عند الشك انشره.
+أجب بالصيغة المطلوبة فقط.
 
 النص:
 """,
-    "rephrase_ar": """أعد صياغة الخبر التالي بالعربية بأسلوب صحفي طبيعي مع الحفاظ على كل الأرقام والتفاصيل.
-- إذا كان إعلاناً أو ترويجاً مدفوعاً أجب بكلمة SKIP فقط، وعند الشك انشره.
-- أجب بالنص النهائي فقط.
+    "rephrase_ar": """أعد صياغة الخبر التالي بالعربية بأسلوب صحفي طبيعي، مع الحفاظ على كل الأرقام والتفاصيل وعدم اختلاق معلومات.
+إذا كان إعلاناً أو ترويجاً مدفوعاً أجب SKIP فقط. عند الشك انشره.
+أخرج النص النهائي فقط.
 
 النص الأصلي:
 """,
@@ -69,51 +67,53 @@ PROMPTS = {
 
 
 def need(name):
-    v = os.environ.get(name, "").strip()
-    if not v:
-        print(f"[ERROR] secret missing or empty: {name} — check the exact name in Settings > Secrets and the env block in run.yml")
-        sys.exit(1)
-    return v
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise RuntimeError(f"Secret missing or empty: {name}")
+    return value
 
 
-# ============ الحالة ============
 def load_state():
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE) as f:
-            return json.load(f)
-    return {}
+    if not os.path.exists(STATE_FILE):
+        return {}
+    try:
+        with open(STATE_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError) as exc:
+        # لا نصفر الحالة تلقائياً حتى لا نعيد نشر القديم.
+        raise RuntimeError(f"Cannot read {STATE_FILE}; backup/fix it first: {exc}")
 
 
 def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+    temp = STATE_FILE + ".tmp"
+    with open(temp, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(temp, STATE_FILE)
 
 
 def h(text):
-    # نحسب الهاش على نص المصدر الخام وليس على ناتج الذكاء الاصطناعي
-    return hashlib.sha1(text.strip().encode()).hexdigest()
+    return hashlib.sha1(text.strip().encode("utf-8")).hexdigest()
 
 
-# ============ التنظيف على مستوى الكود ============
-def strip_hashtags(t):
-    t = re.sub(r"(?<!\S)#[^\s#]+", "", t or "")
-    t = re.sub(r"[ \t]+\n", "\n", t)
-    t = re.sub(r"[ \t]{2,}", " ", t)
-    t = re.sub(r"\n{3,}", "\n\n", t)
-    return t.strip()
+def strip_hashtags(text):
+    text = re.sub(r"(?<!\S)#[^\s#]+", "", text or "")
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def clean_text(text, source):
-    t = text or ""
-    # توقيع التغريدة: "— Fabrizio Romano (@FabrizioRomano)" + سطر التاريخ
-    t = re.sub(r"[—–-]\s*Fabrizio Romano\s*\(@FabrizioRomano\)\s*(?:[A-Z][a-z]{2,8}\.? \d{1,2}, \d{4})?", "", t)
-    t = re.sub(r"https?://t\.co/\S+", "", t)
-    t = re.sub(r"https?://(www\.)?(t\.me|telegram\.me)/\S+", "", t)
-    t = re.sub(r"@Sabereen_Social", "", t, flags=re.I)
-    t = re.sub(r"@" + re.escape(source) + r"\b", "", t, flags=re.I)
-    t = re.sub(r"[ \t]+\n", "\n", t)
-    t = re.sub(r"\n{3,}", "\n\n", t)
-    return strip_hashtags(t)
+    text = text or ""
+    text = re.sub(r"[—–-]\s*Fabrizio Romano\s*\(@FabrizioRomano\)\s*(?:[A-Z][a-z]{2,8}\.? \d{1,2}, \d{4})?", "", text)
+    text = re.sub(r"https?://t\.co/\S+", "", text)
+    text = re.sub(r"https?://(www\.)?(t\.me|telegram\.me)/\S+", "", text)
+    text = re.sub(r"@Sabereen_Social", "", text, flags=re.I)
+    text = re.sub(r"@" + re.escape(source) + r"\b", "", text, flags=re.I)
+    return strip_hashtags(text)
 
 
 def is_rt(text):
@@ -121,222 +121,351 @@ def is_rt(text):
 
 
 def letters_count(text):
-    t = re.sub(r"@\w+", "", text or "")
-    t = re.sub(r"https?://\S+", "", t)
-    return len(re.findall(r"[^\W\d_]", t))
+    text = re.sub(r"@\w+", "", text or "")
+    text = re.sub(r"https?://\S+", "", text)
+    return len(re.findall(r"[^\W\d_]", text))
 
 
-def preview_is_video(wp):
-    if wp is None:
+def preview_is_video(webpage):
+    if webpage is None:
         return False
-    t = (getattr(wp, "type", "") or "").lower()
-    return t in ("video", "gif") or bool(getattr(wp, "duration", None)) or bool(getattr(wp, "embed_url", None))
+    kind = (getattr(webpage, "type", "") or "").lower()
+    return kind in ("video", "gif") or bool(getattr(webpage, "duration", None)) or bool(getattr(webpage, "embed_url", None))
 
 
 def is_podcast_promo(text):
-    t = text.lower()
-    return bool(re.match(r"\s*new pod", t)) and "here we go" not in t
+    text = (text or "").lower()
+    return bool(re.match(r"\s*new pod", text)) and "here we go" not in text
 
 
-def enforce_here_we_go(raw, out):
-    # القاعدة تنفذ بالكود: "هير وي كو" فقط لو النص الأصلي فيه Here We Go حرفياً
+def enforce_here_we_go(raw, output):
     has = "here we go" in raw.lower()
-    out = re.sub(r"^\s*هير\s*وي\s*(كو|غو)\s*", "", out)
-    if has:
-        out = "هير وي كو" + out
-    return out
+    output = re.sub(r"^\s*هير\s*وي\s*(كو|غو)\s*", "", output)
+    return ("هير وي كو\n" + output.lstrip()) if has else output
 
 
-# ============ Gemini ============
-def gemini_generate(prompt, gemini_key):
-    last = "no model tried"
+# ==================== Gemini ====================
+def gemini_generate(prompt, key):
+    last_error = "no model tried"
     for model in GEMINI_MODELS:
-        code = 0
         for attempt in range(3):
-            r = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-                params={"key": gemini_key},
-                json={
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"temperature": 0.3, "maxOutputTokens": 700},
-                },
-                timeout=90,
-            )
-            code = r.status_code
-            if code == 200:
-                data = r.json()
+            try:
+                response = HTTP.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                    params={"key": key},
+                    json={
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 700},
+                    },
+                    timeout=90,
+                )
+            except requests.RequestException as exc:
+                last_error = f"{model}: network error: {exc}"
+                if attempt < 2:
+                    time.sleep(5 * (attempt + 1))
+                    continue
+                break
+
+            if response.status_code == 200:
+                data = response.json()
                 try:
                     return data["candidates"][0]["content"]["parts"][0]["text"]
-                except Exception:
+                except (KeyError, IndexError, TypeError):
                     raise RuntimeError(f"Gemini returned no text ({model}): {str(data)[:300]}")
-            last = f"{model} -> {code}: {r.text[:200]}"
-            print(f"[gemini] {last}")
-            # 503 (ضغط مؤقت) أو 429 بسبب الدقيقة: ننتظر ونعيد على نفس الموديل
-            transient = code == 503 or (code == 429 and "PerDay" not in r.text)
+
+            last_error = f"{model} -> {response.status_code}: {response.text[:250]}"
+            print("[gemini]", last_error)
+            transient = response.status_code in (500, 503) or (
+                response.status_code == 429 and "PerDay" not in response.text
+            )
             if transient and attempt < 2:
-                time.sleep(8 * (attempt + 1))   # 8 ثواني ثم 16
+                time.sleep(8 * (attempt + 1))
                 continue
-            break   # حصة اليوم خلصت أو الموديل غير متوفر: ننتقل للموديل التالي
-        if code not in (429, 404, 500, 503):
-            break   # خطأ غريب (مثل 400): ما ننتقل لموديل ثاني
-    raise RuntimeError(f"Gemini failed: {last}")
+            break
+
+        if "-> 429" not in last_error and "-> 404" not in last_error and "-> 500" not in last_error and "-> 503" not in last_error:
+            break
+    raise RuntimeError(f"Gemini failed: {last_error}")
 
 
-def parse_score(out):
-    m = re.match(r"\s*SCORE\s*[:：]\s*(\d{1,2})[^\n]*\n?", out, re.I)
-    if not m:
-        return None, out
-    return min(int(m.group(1)), 10), out[m.end():].strip()
+def parse_score(output):
+    match = re.match(r"\s*SCORE\s*[:：]\s*(\d{1,2})[^\n]*\n?", output, re.I)
+    if not match:
+        return None, output
+    return min(int(match.group(1)), 10), output[match.end():].strip()
 
 
 def ai_process(raw, mode, gemini_key, min_score=0):
-    """يرجع (النص, سبب_التخطي). لو النص None فالسبب: ad أو low score N"""
     if mode == "copy":
         return raw, None
-    out = strip_hashtags(gemini_generate(PROMPTS[mode] + raw, gemini_key))
-    if out.upper().startswith("SKIP"):
+    output = strip_hashtags(gemini_generate(PROMPTS[mode] + raw, gemini_key))
+    if output.upper().startswith("SKIP"):
         return None, "ad"
     if mode == "translate_ar":
-        score, out = parse_score(out)
-        if out.upper().startswith("SKIP"):
+        score, output = parse_score(output)
+        if output.upper().startswith("SKIP"):
             return None, "ad"
         if "here we go" in raw.lower():
-            score = 10          # Here we go تُنشر دائماً
-        if score is not None:
-            print(f"[score] {score} (min {min_score})")
-            if score < min_score:
-                return None, f"low score {score}"
-        out = enforce_here_we_go(raw, out)
-    return out, None
+            score = 10
+        if score is None:
+            # لا ننشر خبراً لم يستطع النموذج تقييمه، حتى لا تتجاوز الأخبار الهامشية الفلتر.
+            print("[score] Missing score; skipping safely")
+            return None, "missing score"
+        print(f"[score] {score} (minimum {min_score})")
+        if score < min_score:
+            return None, f"low score {score}"
+        output = enforce_here_we_go(raw, output)
+    return output, None
 
 
-# ============ فيسبوك ============
-def fb_check(r):
+# ==================== Facebook ====================
+def graph_check(response, platform="Meta"):
     try:
-        body = r.json()
-    except Exception:
-        raise RuntimeError(f"Facebook non-JSON response {r.status_code}: {r.text[:200]}")
-    if r.status_code != 200 or "error" in body:
-        err = body.get("error", {})
-        if err.get("code") == 190:
-            raise RuntimeError("Facebook token invalid/expired (code 190) — generate a new Page token")
-        raise RuntimeError(f"Facebook error {r.status_code}: {body}")
+        body = response.json()
+    except ValueError:
+        raise RuntimeError(f"{platform} non-JSON response {response.status_code}: {response.text[:300]}")
+    if response.status_code not in (200, 201) or "error" in body:
+        error = body.get("error", {})
+        if error.get("code") == 190:
+            raise RuntimeError(f"{platform}: access token invalid/expired (code 190)")
+        raise RuntimeError(f"{platform} API error {response.status_code}: {body}")
     return body
 
 
 def fb_post(page_id, token, text, images):
     base = f"{GRAPH}/{page_id}"
     if not images:
-        return fb_check(requests.post(f"{base}/feed", data={"message": text, "access_token": token}, timeout=60))
+        return graph_check(HTTP.post(
+            f"{base}/feed",
+            data={"message": text, "access_token": token},
+            timeout=60,
+        ), "Facebook")
+
     if len(images) == 1:
-        data = {"access_token": token}
-        if text:
-            data["message"] = text
-        return fb_check(requests.post(f"{base}/photos", data=data, files={"source": ("img.jpg", images[0])}, timeout=120))
-    # ألبوم: ننشر كل صورة غير منشورة ثم منشور واحد يجمعها
-    ids = []
-    for img in images[:10]:
-        b = fb_check(requests.post(
+        return graph_check(HTTP.post(
+            f"{base}/photos",
+            data={"access_token": token, "message": text},
+            files={"source": ("image.jpg", images[0], "image/jpeg")},
+            timeout=120,
+        ), "Facebook")
+
+    photo_ids = []
+    for image_data in images[:10]:
+        result = graph_check(HTTP.post(
             f"{base}/photos",
             data={"access_token": token, "published": "false"},
-            files={"source": ("img.jpg", img)}, timeout=120))
-        ids.append(b["id"])
+            files={"source": ("image.jpg", image_data, "image/jpeg")},
+            timeout=120,
+        ), "Facebook")
+        photo_ids.append(result["id"])
+
     data = {"access_token": token, "message": text}
-    for i, pid in enumerate(ids):
-        data[f"attached_media[{i}]"] = json.dumps({"media_fbid": pid})
-    return fb_check(requests.post(f"{base}/feed", data=data, timeout=60))
+    for index, photo_id in enumerate(photo_ids):
+        data[f"attached_media[{index}]"] = json.dumps({"media_fbid": photo_id})
+    return graph_check(HTTP.post(f"{base}/feed", data=data, timeout=60), "Facebook")
 
 
 def fb_comment(token, post_id, message):
-    r = requests.post(
+    return graph_check(HTTP.post(
         f"{GRAPH}/{post_id}/comments",
         data={"message": message, "access_token": token},
         timeout=60,
-    )
-    return fb_check(r)
+    ), "Facebook comment")
 
 
-# ============ تيليجرام ============
-def classify(m):
-    """photo | text | skip"""
-    if m.video or m.gif or m.document or m.audio or m.voice or m.video_note or m.sticker:
-        return "skip"          # فيديو، ملفات، ومعاينات فيديو X
-    if m.photo:
+def fb_photo_public_url(photo_id, token):
+    """يستخرج رابط صورة فيسبوك العام لاستخدامه كمصدر لصورة إنستغرام."""
+    result = graph_check(HTTP.get(
+        f"{GRAPH}/{photo_id}",
+        params={"fields": "images", "access_token": token},
+        timeout=30,
+    ), "Facebook photo lookup")
+    images = result.get("images") or []
+    if not images:
+        raise RuntimeError("Facebook photo lookup returned no public image URL")
+    # غالباً أول عنصر أكبر صورة؛ نجربه أولاً.
+    return images[0].get("source")
+
+
+# ==================== Instagram Graph API ====================
+def instagram_publish(ig_user_id, token, image_url, caption):
+    if not image_url or not image_url.startswith("https://"):
+        raise RuntimeError("Instagram requires a publicly reachable HTTPS image URL")
+
+    created = graph_check(HTTP.post(
+        f"{GRAPH}/{ig_user_id}/media",
+        data={
+            "image_url": image_url,
+            "caption": caption[:2200],
+            "access_token": token,
+        },
+        timeout=60,
+    ), "Instagram create media")
+    creation_id = created.get("id")
+    if not creation_id:
+        raise RuntimeError(f"Instagram did not return a container ID: {created}")
+
+    # انتظر معالجة الحاوية قبل النشر.
+    for attempt in range(8):
+        status = graph_check(HTTP.get(
+            f"{GRAPH}/{creation_id}",
+            params={"fields": "status_code,status", "access_token": token},
+            timeout=30,
+        ), "Instagram container status")
+        code = status.get("status_code")
+        if code == "FINISHED":
+            break
+        if code == "ERROR" or code == "EXPIRED":
+            raise RuntimeError(f"Instagram media processing failed: {status}")
+        time.sleep(3 + attempt)
+    else:
+        raise RuntimeError("Instagram media container did not finish processing in time")
+
+    return graph_check(HTTP.post(
+        f"{GRAPH}/{ig_user_id}/media_publish",
+        data={"creation_id": creation_id, "access_token": token},
+        timeout=60,
+    ), "Instagram publish")
+
+
+def retry_pending_instagram(key, cfg, state):
+    """إعادة محاولة منشورات إنستغرام المعلقة فقط، دون إعادة نشر فيسبوك."""
+    ig_env = cfg.get("ig_id_env")
+    pending = state.setdefault(key, {}).setdefault("ig_pending", [])
+    if not pending:
+        return
+    if not ig_env or not os.environ.get(ig_env, "").strip():
+        print(f"[{key}] Instagram ID missing; {len(pending)} pending item(s) retained")
+        return
+
+    ig_id = os.environ[ig_env].strip()
+    token = need(cfg["token_env"])
+    remaining = []
+    for item in pending:
+        try:
+            result = instagram_publish(ig_id, token, item["image_url"], item["caption"])
+            print(f"[{key}] Instagram published pending item: {result.get('id')}")
+        except Exception as exc:
+            item["attempts"] = int(item.get("attempts", 0)) + 1
+            item["last_error"] = str(exc)[:500]
+            remaining.append(item)
+            print(f"[{key}] Instagram retry failed (attempt {item['attempts']}): {exc}")
+    state[key]["ig_pending"] = remaining
+    save_state(state)
+
+
+# ==================== Telegram ====================
+def classify(message):
+    if message.video or message.gif or message.document or message.audio or message.voice or message.video_note or message.sticker:
+        return "skip"
+    if message.photo:
         return "photo"
-    if m.media is not None and m.web_preview is None:
-        return "skip"          # استفتاء أو شي غريب
+    if message.media is not None and message.web_preview is None:
+        return "skip"
     return "text"
 
 
-def group_messages(msgs):
+def group_messages(messages):
     items, seen = [], {}
-    for m in msgs:
-        if m.grouped_id:
-            if m.grouped_id in seen:
-                seen[m.grouped_id].append(m)
-                continue
-            seen[m.grouped_id] = [m]
-            items.append(seen[m.grouped_id])
+    for message in messages:
+        if message.grouped_id:
+            if message.grouped_id in seen:
+                seen[message.grouped_id].append(message)
+            else:
+                seen[message.grouped_id] = [message]
+                items.append(seen[message.grouped_id])
         else:
-            items.append([m])
+            items.append([message])
     return items
 
 
 async def fetch_new(client, source, last_id):
     if last_id is None:
-        # أول تشغيل: آخر 5 فقط
-        latest = [m async for m in client.iter_messages(source, limit=FIRST_RUN_COUNT)]
+        latest = [message async for message in client.iter_messages(source, limit=FIRST_RUN_COUNT)]
         if not latest:
             return [], 0
-        last_id = min(m.id for m in latest) - 1
-    msgs = [m async for m in client.iter_messages(source, min_id=last_id, reverse=True, limit=FETCH_LIMIT)]
-    return group_messages(msgs), last_id
+        last_id = min(message.id for message in latest) - 1
+    messages = [
+        message async for message in client.iter_messages(
+            source, min_id=last_id, reverse=True, limit=FETCH_LIMIT
+        )
+    ]
+    return group_messages(messages), last_id
 
 
 async def run_page(client, key, cfg, state, gemini_key):
     page_id = need(cfg["page_id_env"])
     token = need(cfg["token_env"])
-    st = state.setdefault(key, {"last_id": None, "hashes": []})
-    wait = st.get("cooldown_until", 0) - time.time()
+    st = state.setdefault(key, {"last_id": None, "hashes": [], "ig_pending": []})
+
+    retry_pending_instagram(key, cfg, state)
+
+    wait = float(st.get("cooldown_until", 0)) - time.time()
     if wait > 0:
-        print(f"[{key}] Gemini cooldown, {int(wait)}s left - skipping this run")
+        print(f"[{key}] Gemini cooldown, {int(wait)}s left")
         return
 
-    items, last_id = await fetch_new(client, cfg["source"], st["last_id"])
-    if st["last_id"] is None:
-        st["last_id"] = last_id
-    print(f"[{key}] {len(items)} new items")
+    items, initial_last_id = await fetch_new(client, cfg["source"], st.get("last_id"))
+    if st.get("last_id") is None:
+        st["last_id"] = initial_last_id
+        save_state(state)
+    print(f"[{key}] {len(items)} new Telegram item(s)")
 
-    for grp in items:
-        top = max(m.id for m in grp)
-        kinds = [classify(m) for m in grp]
-        raw = next((m.message for m in grp if m.message), "") or ""
-        raw = clean_text(raw, cfg["source"])
-        has_photo = any(k == "photo" for k in kinds)
-        wp = next((m.media.webpage for m in grp if isinstance(m.media, MessageMediaWebPage)), None)
-        is_preview = wp is not None and not any(isinstance(m.media, MessageMediaPhoto) for m in grp)
-        if wp is not None:
-            print(f"[{key}] preview info id={top} type={getattr(wp, 'type', None)} duration={getattr(wp, 'duration', None)} embed={bool(getattr(wp, 'embed_url', None))}")
+    for group in items:
+        top_id = max(message.id for message in group)
+        kinds = [classify(message) for message in group]
+        raw = clean_text(next((message.message for message in group if message.message), ""), cfg["source"])
+        has_photo = any(kind == "photo" for kind in kinds)
+        webpage = next(
+            (message.media.webpage for message in group if isinstance(message.media, MessageMediaWebPage)),
+            None,
+        )
+        is_preview = webpage is not None and not any(
+            isinstance(message.media, MessageMediaPhoto) for message in group
+        )
 
-        def done(why):
-            print(f"[{key}] {why} {top}")
-            st["last_id"] = top
+        def mark_done(reason):
+            print(f"[{key}] {reason} {top_id}")
+            st["last_id"] = top_id
             save_state(state)
 
         if "skip" in kinds:
-            done("[SKIP media]"); continue
+            mark_done("[SKIP unsupported media]")
+            continue
         if cfg.get("skip_rt") and is_rt(raw):
-            done("[SKIP RT]"); continue
-        if cfg.get("skip_preview_video") and is_preview and preview_is_video(wp):
-            done("[SKIP preview video]"); continue
+            mark_done("[SKIP retweet]")
+            continue
+        if cfg.get("skip_preview_video") and is_preview and preview_is_video(webpage):
+            mark_done("[SKIP preview video]")
+            continue
         if is_preview and letters_count(raw) < cfg.get("min_letters", 15):
-            done("[SKIP empty quote]"); continue
+            mark_done("[SKIP short preview]")
+            continue
         if not raw and not has_photo:
-            done("[SKIP empty]"); continue
+            mark_done("[SKIP empty]")
+            continue
         if cfg.get("skip_podcast") and is_podcast_promo(raw):
-            done("[SKIP podcast]"); continue
-        if raw and h(raw) in st["hashes"]:
-            done("[SKIP duplicate]"); continue
+            mark_done("[SKIP podcast]")
+            continue
+        if raw and h(raw) in st.setdefault("hashes", []):
+            mark_done("[SKIP duplicate text]")
+            continue
+
+        # منع إعادة نشر المجموعة نفسها بعد نجاح Facebook وتوقف التشغيل قبل تحديث last_id.
+        post_key = str(top_id)
+        posts = st.setdefault("posts", {})
+        previous = posts.get(post_key, {})
+        if previous.get("facebook_status") == "published":
+            print(f"[{key}] Facebook already published for source {top_id}; not reposting")
+            st["last_id"] = top_id
+            save_state(state)
+            continue
+        if previous.get("facebook_status") == "inflight":
+            # نتيجة طلب سابق غير مؤكدة؛ لا نكرر النشر تلقائياً لتجنب التكرار.
+            print(f"[{key}] Facebook status uncertain for source {top_id}; manual check required")
+            st["last_id"] = top_id
+            save_state(state)
+            continue
 
         text = ""
         if raw:
@@ -347,32 +476,118 @@ async def run_page(client, key, cfg, state, gemini_key):
                 save_state(state)
                 raise
             if text is None:
-                done(f"[SKIP {skip_reason}]"); continue
+                mark_done(f"[SKIP {skip_reason}]")
+                continue
 
-        images = []
-        for m, k in zip(grp, kinds):
-            if k == "photo":
-                data = await client.download_media(m, file=bytes)
+        image_bytes = []
+        for message, kind in zip(group, kinds):
+            if kind == "photo":
+                data = await client.download_media(message, file=bytes)
                 if data:
-                    images.append(data)
+                    image_bytes.append(data)
 
-        if not text and not images:
-            done("[SKIP nothing to post]"); continue
+        if not text and not image_bytes:
+            mark_done("[SKIP nothing to post]")
+            continue
 
-        text = f"{text}\n\n{FOOTER}" if text else FOOTER
+        caption = f"{text}\n\n{FOOTER}" if text else FOOTER
 
-        res = fb_post(page_id, token, text, images)   # يرمي خطأ لو فشل فلا تتقدم الحالة
-        post_id = res.get("post_id") or res.get("id")
+        # احفظ حالة inflight قبل الطلب: إذا انقطع الاتصال بعد قبول Meta للطلب،
+        # لن نعيد النشر تلقائياً وننشئ نسخة مكررة.
+        posts[post_key] = {
+            "source_id": top_id,
+            "source_hash": h(raw) if raw else "",
+            "facebook_status": "inflight",
+            "instagram_status": "not_started",
+            "created_at": int(time.time()),
+        }
+        save_state(state)
 
-        # التعليق الأول: لو فشل لا نفشل المنشور (وإلا ينشر مرة ثانية)
         try:
-            fb_comment(token, post_id, FIRST_COMMENT)
-        except Exception as e:
-            print(f"[{key}] WARNING comment failed for {post_id}: {e}")
+            fb_result = fb_post(page_id, token, caption, image_bytes)
+        except Exception as exc:
+            posts[post_key]["facebook_error"] = str(exc)[:500]
+            # قد تكون نتيجة الطلب غير مؤكدة؛ لا نعيد الطلب تلقائياً.
+            save_state(state)
+            raise RuntimeError(
+                f"Facebook post failed or outcome uncertain for Telegram {top_id}. "
+                f"Check Page before retrying to avoid duplicate: {exc}"
+            )
+
+        fb_post_id = fb_result.get("post_id") or fb_result.get("id")
+        posts[post_key]["facebook_status"] = "published"
+        posts[post_key]["facebook_post_id"] = fb_post_id
+        save_state(state)
+        print(f"[{key}] Facebook published: {fb_post_id}")
+
+        try:
+            fb_comment(token, fb_post_id, FIRST_COMMENT)
+            posts[post_key]["comment_status"] = "published"
+        except Exception as exc:
+            posts[post_key]["comment_status"] = "failed"
+            posts[post_key]["comment_error"] = str(exc)[:300]
+            print(f"[{key}] WARNING: first comment failed: {exc}")
+
+        # Instagram Graph API يحتاج صورة ذات رابط HTTPS عام. ننشر الصور فقط.
+        ig_env = cfg.get("ig_id_env")
+        if ig_env and os.environ.get(ig_env, "").strip():
+            if image_bytes:
+                try:
+                    # صورة واحدة: استخرج رابطها من Facebook بعد رفعها.
+                    # مع الألبوم نستخدم أول صورة منشورة/مرفوعة كمصدر إنستغرام.
+                    photo_id = fb_result.get("id") if len(image_bytes) == 1 else None
+                    if not photo_id and fb_post_id:
+                        # المنشور متعدد الصور لا يعيد دائماً معرف الصورة؛ جرّب قراءة المرفقات.
+                        attachments = graph_check(HTTP.get(
+                            f"{GRAPH}/{fb_post_id}",
+                            params={
+                                "fields": "attachments{media}",
+                                "access_token": token,
+                            },
+                            timeout=30,
+                        ), "Facebook attachments")
+                        data = attachments.get("attachments", {}).get("data", [])
+                        for attachment in data:
+                            media = attachment.get("media", {})
+                            if media.get("id"):
+                                photo_id = media["id"]
+                                break
+                    if not photo_id:
+                        raise RuntimeError(
+                            "Could not get Facebook photo ID for Instagram. "
+                            "Facebook post succeeded; Instagram will need a retry/manual check."
+                        )
+                    image_url = fb_photo_public_url(photo_id, token)
+                    if not image_url:
+                        raise RuntimeError("Facebook did not return an image URL")
+                    ig_result = instagram_publish(
+                        os.environ[ig_env].strip(), token, image_url, caption
+                    )
+                    posts[post_key]["instagram_status"] = "published"
+                    posts[post_key]["instagram_post_id"] = ig_result.get("id")
+                    print(f"[{key}] Instagram published: {ig_result.get('id')}")
+                except Exception as exc:
+                    posts[post_key]["instagram_status"] = "pending"
+                    posts[post_key]["instagram_error"] = str(exc)[:500]
+                    # نخزن الرابط إن توفر؛ إذا لم يتوفر نحتفظ بالمعلومة لتشخيصها ولا نعيد Facebook.
+                    if "image_url" in locals() and image_url:
+                        st.setdefault("ig_pending", []).append({
+                            "source_id": top_id,
+                            "image_url": image_url,
+                            "caption": caption,
+                            "attempts": 0,
+                        })
+                    print(f"[{key}] Instagram failed; Facebook will NOT be reposted: {exc}")
+            else:
+                posts[post_key]["instagram_status"] = "skipped_no_image"
+                print(f"[{key}] Instagram skipped: Graph API image posts require an image")
+        else:
+            posts[post_key]["instagram_status"] = "disabled_no_ig_id"
 
         if raw:
-            st["hashes"] = (st["hashes"] + [h(raw)])[-100:]
-        done("[OK]")
+            st["hashes"] = (st["hashes"] + [h(raw)])[-300:]
+        st["last_id"] = top_id
+        save_state(state)
 
 
 async def main():
@@ -384,21 +599,22 @@ async def main():
     client = TelegramClient(StringSession(session), api_id, api_hash)
     await client.connect()
     if not await client.is_user_authorized():
-        print("[ERROR] TG_SESSION is not authorized — generate a new session string")
-        sys.exit(1)
+        await client.disconnect()
+        raise RuntimeError("TG_SESSION is not authorized; generate a new session string")
 
     state = load_state()
     failed = False
     try:
-        for key, cfg in PAGES.items():
+        for key, config in PAGES.items():
             try:
-                await run_page(client, key, cfg, state, gemini_key)
-            except Exception as e:
+                await run_page(client, key, config, state, gemini_key)
+            except Exception as exc:
                 failed = True
-                print(f"[{key}] FAILED: {e}")
+                print(f"[{key}] FAILED: {exc}")
     finally:
         save_state(state)
         await client.disconnect()
+
     if failed:
         sys.exit(1)
 
