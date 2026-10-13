@@ -23,6 +23,7 @@ PAGES = {
         "skip_rt": True,               # يتخطى الريتويت (RT @...)
         "skip_preview_video": True,    # يتخطى معاينات فيديو X
         "min_letters": 15,             # يتخطى منشورات المعاينة اللي نصها فاضي تقريباً (اسم + ايموجي)
+        "min_score": 6,                # ينشر فقط الأخبار اللي درجة تفاعلها المتوقعة >= هذا الرقم (0 = ينشر كل شي)
     },
 }
 
@@ -43,11 +44,18 @@ FOOTER = (
 FIRST_COMMENT = "رابط قناة التلكرام 👇\nhttps://t.me/FabriAr1"
 
 PROMPTS = {
-    "translate_ar": """ترجم خبر كرة القدم التالي إلى العربية بأسلوب طبيعي كأن كاتباً عربياً كتبه (ليس حرفياً).
+    "translate_ar": """أنت محرر صفحة أخبار كرة قدم عربية هدفها جذب التفاعل.
+أعطِ الخبر درجة من 1 إلى 10 حسب احتمال تفاعل الجمهور العربي معه:
+- 9-10: صفقة مؤكدة أو Here we go، أو نجم عالمي (ميسي، رونالدو، مبابي، هالاند، صلاح...)، أو نادٍ كبير (ريال مدريد، برشلونة، سيتي، يونايتد، ليفربول، أرسنال، تشلسي، باريس، بايرن، يوفنتوس، ميلان، إنتر، الهلال، النصر...)، أو تعيين/إقالة مدرب كبير.
+- 6-8: صفقة متقدمة أو مفاوضات جدية أو تجديد عقد أو إصابة نجم أو لاعب عربي معروف.
+- 3-5: شائعات عادية أو أندية متوسطة أو لاعبون أقل شهرة.
+- 1-2: أخبار هامشية أو دوريات صغيرة أو ناشئون مجهولون.
+
+الصيغة: السطر الأول فقط SCORE: الرقم، ثم ترجم الخبر إلى العربية بأسلوب طبيعي كأن كاتباً عربياً كتبه (ليس حرفياً).
 - حافظ على تقسيم الأسطر.
 - بدون هاشتاغات، وبدون روابط أو إشارات لحسابات.
 - إذا كان إعلاناً أو ترويجاً (سعر، خصم، اشتراك، رعاية، كود خصم، رابط شراء) أجب SKIP فقط. وعند الشك انشره.
-- أجب بالنص النهائي فقط.
+- أجب بالصيغة المطلوبة فقط بدون أي شرح.
 
 النص:
 """,
@@ -174,15 +182,32 @@ def gemini_generate(prompt, gemini_key):
     raise RuntimeError(f"Gemini failed: {last}")
 
 
-def ai_process(raw, mode, gemini_key):
+def parse_score(out):
+    m = re.match(r"\s*SCORE\s*[:：]\s*(\d{1,2})[^\n]*\n?", out, re.I)
+    if not m:
+        return None, out
+    return min(int(m.group(1)), 10), out[m.end():].strip()
+
+
+def ai_process(raw, mode, gemini_key, min_score=0):
+    """يرجع (النص, سبب_التخطي). لو النص None فالسبب: ad أو low score N"""
     if mode == "copy":
-        return raw
+        return raw, None
     out = strip_hashtags(gemini_generate(PROMPTS[mode] + raw, gemini_key))
     if out.upper().startswith("SKIP"):
-        return None
+        return None, "ad"
     if mode == "translate_ar":
+        score, out = parse_score(out)
+        if out.upper().startswith("SKIP"):
+            return None, "ad"
+        if "here we go" in raw.lower():
+            score = 10          # Here we go تُنشر دائماً
+        if score is not None:
+            print(f"[score] {score} (min {min_score})")
+            if score < min_score:
+                return None, f"low score {score}"
         out = enforce_here_we_go(raw, out)
-    return out
+    return out, None
 
 
 # ============ فيسبوك ============
@@ -316,13 +341,13 @@ async def run_page(client, key, cfg, state, gemini_key):
         text = ""
         if raw:
             try:
-                text = ai_process(raw, cfg["mode"], gemini_key)
+                text, skip_reason = ai_process(raw, cfg["mode"], gemini_key, cfg.get("min_score", 0))
             except Exception:
                 st["cooldown_until"] = time.time() + COOLDOWN_SECONDS
                 save_state(state)
                 raise
             if text is None:
-                done("[SKIP ad]"); continue
+                done(f"[SKIP {skip_reason}]"); continue
 
         images = []
         for m, k in zip(grp, kinds):
