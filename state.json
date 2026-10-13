@@ -1,6 +1,6 @@
 {
   "fabrizio": {
-    "last_id": 67252,
+    "last_id": 67254,
     "hashes": [
       "b33775955411f9b1ad2b2cc62424810a9775b158",
       "88716d84495863ba90479a493c2d99f62b466eb5",
@@ -101,7 +101,9 @@
       "f1ea4a381fa8378666a206a761a8bd3a3423f84c",
       "12afd14d34d58db3c50089e6ec36af4cf08b9cf5",
       "b9ae279e8391f9ca315e0e2a6afd2bfa554a492f",
-      "3ffc8417478489b7ddfe329c7fe2c09b514413e0"
+      "3ffc8417478489b7ddfe329c7fe2c09b514413e0",
+      "bd74029967ed34e037440aba42e4431b94932ffc",
+      "af6c6324458009cfa921e0d185fa8bf2ede55953"
     ],
     "ig_last_id": 67203,
     "ig_hashes": [
@@ -132,7 +134,29 @@
     ],
     "ig_fail": {},
     "cooldown_until": 1791918414.401014,
-    "ig_pending": []
+    "ig_pending": [],
+    "posts": {
+      "67253": {
+        "source_id": 67253,
+        "source_hash": "bd74029967ed34e037440aba42e4431b94932ffc",
+        "facebook_status": "published",
+        "instagram_status": "published",
+        "created_at": 1791923362,
+        "facebook_post_id": "585921651272636_122184219362824376",
+        "comment_status": "published",
+        "instagram_post_id": "18098507624093422"
+      },
+      "67254": {
+        "source_id": 67254,
+        "source_hash": "af6c6324458009cfa921e0d185fa8bf2ede55953",
+        "facebook_status": "published",
+        "instagram_status": "published",
+        "created_at": 1791923380,
+        "facebook_post_id": "585921651272636_122184219470824376",
+        "comment_status": "published",
+        "instagram_post_id": "18134297269735990"
+      }
+    }
   },
   "offside": {
     "last_id": 378080,
