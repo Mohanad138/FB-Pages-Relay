@@ -28,10 +28,11 @@ PAGES = {
 
 STATE_FILE = "state.json"
 FIRST_RUN_COUNT = 5
+COOLDOWN_SECONDS = 300   # بعد فشل Gemini: استراحة 5 دقائق قبل المحاولة التالية
 FETCH_LIMIT = 40
 GRAPH = "https://graph.facebook.com/v21.0"
 # الأرخص أولاً (الترجمة بسيطة). لو انتهت حصته أو ما توفر ينتقل للي بعده (لكل موديل حصة مستقلة)
-GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest"]
+GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemma-3-27b-it"]
 
 # نص يضاف بنهاية كل منشور + أول تعليق بعد النشر
 FOOTER = (
@@ -140,67 +141,37 @@ def enforce_here_we_go(raw, out):
 
 # ============ Gemini ============
 def gemini_generate(prompt, gemini_key):
-    """يرسل الطلب إلى Gemini مع إعادة المحاولة عند بطء/انقطاع الاتصال.
-
-    إذا انتهت مهلة موديل، ينتقل للموديل التالي بدل إسقاط التشغيل مباشرة.
-    لا تتغير حالة المنشور ولا يتم نشره إذا فشلت الترجمة.
-    """
     last = "no model tried"
     for model in GEMINI_MODELS:
-        model_succeeded = False
-        for attempt in range(1, 4):
-            try:
-                r = requests.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-                    params={"key": gemini_key},
-                    json={
-                        "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 700},
-                    },
-                    # مهلة اتصال 20 ثانية، وانتظار الرد حتى 150 ثانية
-                    timeout=(20, 150),
-                )
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                last = f"{model} -> {type(e).__name__}: {e}"
-                print(f"[gemini] {last}")
-                if attempt < 3:
-                    wait = 5 * attempt
-                    print(f"[gemini] إعادة المحاولة {attempt}/3 بعد {wait} ثوانٍ")
-                    time.sleep(wait)
-                    continue
-                print(f"[gemini] انتهت محاولات {model} بسبب مشكلة اتصال؛ تجربة الموديل التالي إن وجد")
-                break
-
-            if r.status_code == 200:
+        code = 0
+        for attempt in range(3):
+            r = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                params={"key": gemini_key},
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.3, "maxOutputTokens": 700},
+                },
+                timeout=90,
+            )
+            code = r.status_code
+            if code == 200:
                 data = r.json()
                 try:
                     return data["candidates"][0]["content"]["parts"][0]["text"]
-                except (KeyError, IndexError, TypeError):
+                except Exception:
                     raise RuntimeError(f"Gemini returned no text ({model}): {str(data)[:300]}")
-
-            last = f"{model} -> {r.status_code}: {r.text[:200]}"
+            last = f"{model} -> {code}: {r.text[:200]}"
             print(f"[gemini] {last}")
-
-            # 429 بسبب حدّ الطلبات بالدقيقة: انتظر ثم أعد المحاولة.
-            if r.status_code == 429 and "PerDay" not in r.text and attempt < 3:
-                wait = 10 * attempt
-                print(f"[gemini] حدّ طلبات مؤقت؛ إعادة المحاولة بعد {wait} ثانية")
-                time.sleep(wait)
+            # 503 (ضغط مؤقت) أو 429 بسبب الدقيقة: ننتظر ونعيد على نفس الموديل
+            transient = code == 503 or (code == 429 and "PerDay" not in r.text)
+            if transient and attempt < 2:
+                time.sleep(8 * (attempt + 1))   # 8 ثواني ثم 16
                 continue
-
-            # أخطاء مؤقتة من Google: أعد المحاولة، ثم انتقل للموديل التالي.
-            if r.status_code in (500, 502, 503, 504) and attempt < 3:
-                wait = 5 * attempt
-                time.sleep(wait)
-                continue
-            break
-
-        # جرّب الموديل التالي عند انتهاء المهلة/الحصة أو خطأ خدمة مؤقت.
-        if any(code in last for code in ("Timeout", "ConnectionError", "429", "404", "500", "502", "503", "504")):
-            continue
-        break
-
-    raise RuntimeError(f"Gemini failed after retries: {last}")
+            break   # حصة اليوم خلصت أو الموديل غير متوفر: ننتقل للموديل التالي
+        if code not in (429, 404, 500, 503):
+            break   # خطأ غريب (مثل 400): ما ننتقل لموديل ثاني
+    raise RuntimeError(f"Gemini failed: {last}")
 
 
 def ai_process(raw, mode, gemini_key):
@@ -301,6 +272,10 @@ async def run_page(client, key, cfg, state, gemini_key):
     page_id = need(cfg["page_id_env"])
     token = need(cfg["token_env"])
     st = state.setdefault(key, {"last_id": None, "hashes": []})
+    wait = st.get("cooldown_until", 0) - time.time()
+    if wait > 0:
+        print(f"[{key}] Gemini cooldown, {int(wait)}s left - skipping this run")
+        return
 
     items, last_id = await fetch_new(client, cfg["source"], st["last_id"])
     if st["last_id"] is None:
@@ -340,7 +315,12 @@ async def run_page(client, key, cfg, state, gemini_key):
 
         text = ""
         if raw:
-            text = ai_process(raw, cfg["mode"], gemini_key)
+            try:
+                text = ai_process(raw, cfg["mode"], gemini_key)
+            except Exception:
+                st["cooldown_until"] = time.time() + COOLDOWN_SECONDS
+                save_state(state)
+                raise
             if text is None:
                 done("[SKIP ad]"); continue
 
