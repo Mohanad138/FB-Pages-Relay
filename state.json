@@ -383,7 +383,14 @@
       "4b555d123cb8324edcce04787524a3c8d8a9aec1",
       "4181c4389e27b7a324f60ed0c1caec0b634b81fb",
       "4a2bc464b07c2c8d4ff0649b1b53d50e38c12a26",
-      "0192f6350222807be80732bdd27eaec0342cfd62"
+      "0192f6350222807be80732bdd27eaec0342cfd62",
+      "52db26d130c827d1bb2dfa76b675db2072d91bce",
+      "ff67d04056468a8fed57c1e6ef83d32f7ac14ba0",
+      "9add5496e02dcfead31121f87b06e17b788c7d11",
+      "3e7a7121c6018e9e3bc1590b1c299d40ceefb91d",
+      "d4b588ed498f7cbbc73d182c2c3392ecbfe7bca1",
+      "d5b36373077ce19bb1e1d3bb4df911fd63d783e0",
+      "b359a6898d7eeed608484d65433193a5f36bc4c9"
     ],
     "ig_last_id": 378080,
     "ig_hashes": [
@@ -487,6 +494,18 @@
         "caption": "🚨🇪🇺| انطلاق المباريات [دوري أبطال أوروبا - الجولة الثانية]:\n\n• [⚽️] غلطة سراي 🆚 برشلونة [⚽️]\n📺 - القناة: beIN SPORTS 1.\n🎤 - المعلق: عصام الشوالي.\n🏟️ - ملعب علي سامي ين سبور.\n\n• [⚽️] آرسنال 🆚 ليل [⚽️]\n📺 - القناة: beIN SPORTS 4.\n🎤 - المعلق: علي محمد علي.\n🏟️ - ملعب الإمارات.\n\n• [⚽️] أتلتيكو مدريد 🆚 مانشستر يونايتد [⚽️]\n📺 - القناة: beIN SPORTS 5.\n🎤 - المعلق: حفيظ دراجي.\n🏟️ - الملعب: طيران الرياض ميتروبوليتانو.\n\n• [⚽️] إنتر ميلان 🆚 كلوب بروج [⚽️]\n📺 - القناة: beIN SPORTS 6.\n🎤 - المعلق: خليل البلوشي.\n🏟️ - الملعب: جوزيبي مياتزا.\n\n• [🇳🇴] فايكينغ 🆚 بايرن ميونخ [⚽️]\n📺 - القناة: beIN SPORTS 7.\n🎤 - المعلق: حسن العيدروس.\n🏟️ - ملعب ليسي أرينا.\n\n• [⚽️] فياريال 🆚 نابولي [⚽️]\n📺 - القناة: beIN SPORTS 8.\n🎤 - المعلق: جواد بده.\n🏟️ - ملعب لا سيراميكا.\n\n• [⚽️] آر بي لايبزيغ 🆚 بي إس ڤي آيندهوفن [⚽️]\n📺 - القناة: beIN XTRA 1.\n🎤 - المعلق: باسم الزير.\n🏟️ - ملعب ريد بول أرينا.\n\n----------------------\nيمكنكم متابعة الأخبار لحظة بلحظة عبر قناتنا على التلغرام\nرابط القناة في أول تعليق",
         "attempts": 1,
         "last_error": "Instagram publish API error 400: {'error': {'message': 'User is performing too many actions', 'type': 'OAuthException', 'is_transient': False, 'code': 9, 'error_subcode': 2207042, 'error_user_title': 'تم تجاوز حد نشر الوسائط', 'error_user_msg': 'لقد وصلت إلى أقصى حد لعدد المنشورات المسموح بنشره بواسطة واجهة API نشر المحتوى.', 'fbtrace_id': 'AabYzh7zJq6C-lN4rgjf2hr'}}"
+      },
+      {
+        "source_id": 378170,
+        "image_url": "https://scontent-iad3-2.xx.fbcdn.net/v/t39.30808-6/846449820_122184247346824376_2379669844280123395_n.jpg?_nc_cat=111&ccb=1-7&_nc_sid=e5c1b6&_nc_eui2=AeFG6aiKaWjF2oheF_85SHn8MJ_dytABE7Qwn93K0AETtKmiKkgMHMa7fNXnSni4TUiYYjDxhBM4EOpD9Ppj-4u8&_nc_ohc=O5icaATXYO4Q7kNvwHYLJYJ&_nc_oc=Adr2c7THXG_sLlz8RYZZEAWh4tN9bDOjLGs9d6CJa8PMKC3SUA_Ks8cUaayjwAMNwkE&_nc_zt=23&_nc_ht=scontent-iad3-2.xx&edm=AMAeTUEEAAAA&_nc_gid=izJUQvdCefssVV2rCgXRvw&_nc_tpa=Q5bMBQJ5ox18fdVS4aK1LGJlkFjjjOc43AhBgNU6Uz091a1Klw7yshEV7hMg6DayjSLLGabJavb4z69K9A&oh=00_AQNlwjoWRa4Q1IryE4oOTvAqGdwkOakwGFkjsj3Is_baWQ&oe=6AD48A2D",
+        "caption": "----------------------\nيمكنكم متابعة الأخبار لحظة بلحظة عبر قناتنا على التلغرام\nرابط القناة في أول تعليق",
+        "attempts": 0
+      },
+      {
+        "source_id": 378176,
+        "image_url": "https://scontent-iad6-1.xx.fbcdn.net/v/t39.30808-6/846910111_122184247556824376_4308020806670203245_n.jpg?_nc_cat=109&ccb=1-7&_nc_sid=e5c1b6&_nc_eui2=AeExORL9Kx_lENuvfDSYXe0qdtEZRAS8z7Z20RlEBLzPthEVzQ1z_Mk629VaUYbEpWDVmjnrK7EpBgQX6hSqdBhs&_nc_ohc=3CMd5opqEosQ7kNvwEH9Tzd&_nc_oc=AdoGgPloOHJWrMp0RAlIgwjYGy_lpKJ4IyjHlz4FFmcysmKUSIajfvGimnmwr6dwPnc&_nc_zt=23&_nc_ht=scontent-iad6-1.xx&edm=AMAeTUEEAAAA&_nc_gid=UZ1GZUgTNifNi3XiNN61PQ&_nc_tpa=Q5bMBQJxQZUqj0SaDzg5biXT-SZzKUsjyeBcQOEScSNYpBAngQapTuHqPWkjgqXvFvh4VSzt6KjBnH-RVA&oh=00_AQOWCigHklX-BxtynL4XCUpomqaFfLzEVWRo_RNKGhZCJw&oe=6AD49FC4",
+        "caption": "----------------------\nيمكنكم متابعة الأخبار لحظة بلحظة عبر قناتنا على التلغرام\nرابط القناة في أول تعليق",
+        "attempts": 0
       }
     ],
     "posts": {
@@ -974,6 +993,89 @@
         "instagram_status": "skipped_no_image",
         "created_at": 1791934445,
         "facebook_post_id": "585921651272636_122184244664824376",
+        "comment_status": "published"
+      },
+      "378169": {
+        "source_id": 378169,
+        "source_hash": "52db26d130c827d1bb2dfa76b675db2072d91bce",
+        "facebook_status": "published",
+        "instagram_status": "skipped_no_image",
+        "created_at": 1791934650,
+        "facebook_post_id": "585921651272636_122184247268824376",
+        "comment_status": "published"
+      },
+      "378170": {
+        "source_id": 378170,
+        "source_hash": "",
+        "facebook_status": "published",
+        "instagram_status": "pending",
+        "created_at": 1791934659,
+        "facebook_post_id": "585921651272636_122184247364824376",
+        "comment_status": "published",
+        "instagram_error": "Instagram publish API error 400: {'error': {'message': 'User is performing too many actions', 'type': 'OAuthException', 'is_transient': False, 'code': 9, 'error_subcode': 2207042, 'error_user_title': 'تم تجاوز حد نشر الوسائط', 'error_user_msg': 'لقد وصلت إلى أقصى حد لعدد المنشورات المسموح بنشره بواسطة واجهة API نشر المحتوى.', 'fbtrace_id': 'Al941CR7ef19-AV9kZNTtZE'}}"
+      },
+      "378176": {
+        "source_id": 378176,
+        "source_hash": "",
+        "facebook_status": "published",
+        "instagram_status": "pending",
+        "created_at": 1791934673,
+        "facebook_post_id": "585921651272636_122184247574824376",
+        "comment_status": "published",
+        "instagram_error": "Instagram publish API error 400: {'error': {'message': 'User is performing too many actions', 'type': 'OAuthException', 'is_transient': False, 'code': 9, 'error_subcode': 2207042, 'error_user_title': 'تم تجاوز حد نشر الوسائط', 'error_user_msg': 'لقد وصلت إلى أقصى حد لعدد المنشورات المسموح بنشره بواسطة واجهة API نشر المحتوى.', 'fbtrace_id': 'AXX14N9iq9n4wtngygK_JrZ'}}"
+      },
+      "378178": {
+        "source_id": 378178,
+        "source_hash": "ff67d04056468a8fed57c1e6ef83d32f7ac14ba0",
+        "facebook_status": "published",
+        "instagram_status": "skipped_no_image",
+        "created_at": 1791934687,
+        "facebook_post_id": "585921651272636_122184247664824376",
+        "comment_status": "published"
+      },
+      "378188": {
+        "source_id": 378188,
+        "source_hash": "9add5496e02dcfead31121f87b06e17b788c7d11",
+        "facebook_status": "published",
+        "instagram_status": "skipped_no_image",
+        "created_at": 1791934695,
+        "facebook_post_id": "585921651272636_122184247718824376",
+        "comment_status": "published"
+      },
+      "378189": {
+        "source_id": 378189,
+        "source_hash": "3e7a7121c6018e9e3bc1590b1c299d40ceefb91d",
+        "facebook_status": "published",
+        "instagram_status": "skipped_no_image",
+        "created_at": 1791934702,
+        "facebook_post_id": "585921651272636_122184247754824376",
+        "comment_status": "published"
+      },
+      "378195": {
+        "source_id": 378195,
+        "source_hash": "d4b588ed498f7cbbc73d182c2c3392ecbfe7bca1",
+        "facebook_status": "published",
+        "instagram_status": "skipped_no_image",
+        "created_at": 1791934710,
+        "facebook_post_id": "585921651272636_122184247790824376",
+        "comment_status": "published"
+      },
+      "378202": {
+        "source_id": 378202,
+        "source_hash": "d5b36373077ce19bb1e1d3bb4df911fd63d783e0",
+        "facebook_status": "published",
+        "instagram_status": "skipped_no_image",
+        "created_at": 1791934717,
+        "facebook_post_id": "585921651272636_122184247820824376",
+        "comment_status": "published"
+      },
+      "378203": {
+        "source_id": 378203,
+        "source_hash": "b359a6898d7eeed608484d65433193a5f36bc4c9",
+        "facebook_status": "published",
+        "instagram_status": "skipped_no_image",
+        "created_at": 1791934724,
+        "facebook_post_id": "585921651272636_122184247856824376",
         "comment_status": "published"
       }
     }
