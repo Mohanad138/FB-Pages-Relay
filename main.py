@@ -12,8 +12,8 @@ from telethon.tl.types import MessageMediaWebPage, MessageMediaPhoto
 
 # ==================== إعدادات ====================
 PAGES = {
-    "fabrizio": {
-        "source": "FabrizioRomanoTG",
+    "offside": {
+        "source": "Offsideahdaff",
         "page_id_env": "FB_PAGE_ID_1",
         "token_env": "FB_PAGE_TOKEN_1",
         "ig_id_env": "IG_USER_ID_1",
@@ -40,7 +40,7 @@ FOOTER = (
     "يمكنكم متابعة الأخبار لحظة بلحظة عبر قناتنا على التلغرام\n"
     "رابط القناة في أول تعليق"
 )
-FIRST_COMMENT = "رابط قناة التلغرام 👇\nhttps://t.me/FabriAr1"
+FIRST_COMMENT = "رابط قناة التلغرام 👇\nhttps://t.me/Offsideahdaff"
 
 PROMPTS = {
     "translate_ar": """أنت محرر صفحة أخبار كرة قدم عربية هدفها جذب التفاعل.
