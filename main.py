@@ -8,6 +8,7 @@ import io
 import math
 import hashlib
 import subprocess
+from datetime import datetime, timezone
 import requests
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -31,18 +32,20 @@ PAGES = {
         "skip_rt": True,               # يتخطى الريتويت (RT @...)
         "skip_preview_video": True,    # يتخطى معاينات فيديو X
         "min_letters": 15,             # يتخطى منشورات المعاينة اللي نصها فاضي تقريباً (اسم + ايموجي)
+        "max_age_minutes": 180,        # يتخطى الأخبار الأقدم من 3 ساعات (حتى لا ينشر قديم بعد انقطاع Gemini). 0 = بدون حد
         "min_score": 7,                # ينشر فقط المهم: درجة التفاعل المتوقعة >= هذا الرقم (0 = ينشر كل شي)
         "instagram": True,             # ينشر نفس المنشور على إنستغرام (لو الحساب Professional ومربوط بالصفحة)
     },
 }
 
+VERSION = "2026-10-15-v6"
 STATE_FILE = "state.json"
 FIRST_RUN_COUNT = 5
-COOLDOWN_SECONDS = 300   # بعد فشل Gemini: استراحة 5 دقائق قبل المحاولة التالية
+COOLDOWN_SECONDS = 600   # بعد فشل Gemini: استراحة 10 دقائق قبل المحاولة التالية
 FETCH_LIMIT = 40
 GRAPH = "https://graph.facebook.com/v21.0"
 # الأرخص أولاً (الترجمة بسيطة). لو انتهت حصته أو ما توفر ينتقل للي بعده (لكل موديل حصة مستقلة)
-GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemma-3-27b-it"]
+GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest"]   # لو خلصت حصتهم يكتشف البوت موديلات ثانية متاحة بمفتاحك تلقائياً
 
 # نص يضاف بنهاية كل منشور + أول تعليق بعد النشر
 FOOTER = (
@@ -165,9 +168,44 @@ def enforce_here_we_go(raw, out):
 
 
 # ============ Gemini ============
+def discover_models(gemini_key):
+    """يجلب الموديلات المتاحة بمفتاحك (لكل موديل حصة يومية مستقلة)"""
+    try:
+        r = requests.get("https://generativelanguage.googleapis.com/v1beta/models",
+                         params={"key": gemini_key, "pageSize": 1000}, timeout=30)
+        if r.status_code != 200:
+            print(f"[gemini] ListModels failed {r.status_code}: {r.text[:150]}")
+            return []
+        names = []
+        for mm in r.json().get("models", []):
+            name = mm.get("name", "").replace("models/", "")
+            low = name.lower()
+            if "generateContent" not in mm.get("supportedGenerationMethods", []):
+                continue
+            if "gemini" not in low:
+                continue
+            if any(x in low for x in ("pro", "image", "tts", "embedding", "audio", "live",
+                                      "robotics", "computer", "thinking", "vision", "exp")):
+                continue
+            names.append(name)
+        names.sort(key=lambda n: (0 if "lite" in n else 1, 1 if "latest" in n else 0, n))
+        print(f"[gemini] discovered models: {names[:8]}")
+        return names[:8]
+    except Exception as e:
+        print(f"[gemini] ListModels error: {e}")
+        return []
+
+
 def gemini_generate(prompt, gemini_key):
     last = "no model tried"
-    for model in GEMINI_MODELS:
+    queue = list(GEMINI_MODELS)
+    tried = set()
+    discovered = False
+    while queue:
+        model = queue.pop(0)
+        if model in tried:
+            continue
+        tried.add(model)
         code = 0
         for attempt in range(3):
             r = requests.post(
@@ -196,6 +234,9 @@ def gemini_generate(prompt, gemini_key):
             break   # حصة اليوم خلصت أو الموديل غير متوفر: ننتقل للموديل التالي
         if code not in (429, 404, 500, 503):
             break   # خطأ غريب (مثل 400): ما ننتقل لموديل ثاني
+        if not queue and not discovered:
+            discovered = True
+            queue.extend(discover_models(gemini_key))
     raise RuntimeError(f"Gemini failed: {last}")
 
 
@@ -407,6 +448,28 @@ def ig_retry_pending(key, st, state, ig_id, token):
     save_state(state)
 
 
+# ============ سجل النشر في Saved Messages (يمنع التكرار حتى لو فشل state.json) ============
+LEDGER_LIMIT = 500
+
+
+async def ledger_load(client):
+    """يقرأ علامات FBRELAY| من رسائلك المحفوظة. يرجع None لو فشلت القراءة"""
+    try:
+        out = set()
+        async for m in client.iter_messages("me", limit=LEDGER_LIMIT):
+            t = (m.message or "").strip()
+            if t.startswith("FBRELAY|"):
+                out.add(t)
+        return out
+    except Exception as e:
+        print(f"[ledger] read failed: {e}")
+        return None
+
+
+async def ledger_add(client, marker):
+    await client.send_message("me", marker)
+
+
 # ============ تيليجرام ============
 def classify(m):
     """photo | text | skip"""
@@ -459,8 +522,10 @@ async def run_page(client, key, cfg, state, gemini_key):
                 st["ig_user_id"] = ig_id
         if not ig_id:
             print(f"[{key}] [IG] disabled: no linked Instagram professional account found (or token lacks instagram_basic)")
-        elif st.get("ig_pending"):
-            ig_retry_pending(key, st, state, ig_id, token)
+        else:
+            print(f"[{key}] [IG] enabled (account {ig_id})")
+            if st.get("ig_pending"):
+                ig_retry_pending(key, st, state, ig_id, token)
 
     wait = st.get("cooldown_until", 0) - time.time()
     if wait > 0:
@@ -471,6 +536,14 @@ async def run_page(client, key, cfg, state, gemini_key):
     if st["last_id"] is None:
         st["last_id"] = last_id
     print(f"[{key}] {len(items)} new items")
+
+    ledger, ledger_ok = set(), False
+    if items:
+        loaded = await ledger_load(client)
+        if loaded is not None:
+            ledger, ledger_ok = loaded, True
+        else:
+            print(f"[{key}] WARNING: could not read the Saved Messages ledger; relying on state.json only")
 
     for grp in items:
         top = max(m.id for m in grp)
@@ -488,6 +561,20 @@ async def run_page(client, key, cfg, state, gemini_key):
             st["last_id"] = top
             save_state(state)
 
+        fb_marker = f"FBRELAY|{key}|{top}|FB"
+        ig_marker = f"FBRELAY|{key}|{top}|IG"
+        if fb_marker in ledger:
+            done("[SKIP already posted (ledger)]"); continue
+
+        age_limit = cfg.get("max_age_minutes", 0)
+        if age_limit:
+            dts = [m.date for m in grp if getattr(m, "date", None)]
+            if dts:
+                newest = max(dts)
+                if newest.tzinfo is None:
+                    newest = newest.replace(tzinfo=timezone.utc)
+                if (datetime.now(timezone.utc) - newest).total_seconds() > age_limit * 60:
+                    done("[SKIP too old]"); continue
         if "skip" in kinds:
             done("[SKIP media]"); continue
         if cfg.get("skip_rt") and is_rt(raw):
@@ -530,6 +617,13 @@ async def run_page(client, key, cfg, state, gemini_key):
         res = fb_post(page_id, token, text, images)   # يرمي خطأ لو فشل فلا تتقدم الحالة
         post_id = res.get("post_id") or res.get("id")
 
+        # نسجّل النشر فوراً بسجل تلكرام (أقوى حماية من التكرار)
+        try:
+            await ledger_add(client, fb_marker)
+            ledger.add(fb_marker)
+        except Exception as e:
+            print(f"[{key}] WARNING ledger write failed: {e}")
+
         # نحفظ التقدم فوراً (قبل التعليق وإنستغرام) حتى لا يتكرر النشر لو صار أي خلل بعدها
         if raw:
             st["hashes"] = (st["hashes"] + [h(raw)])[-100:]
@@ -544,7 +638,9 @@ async def run_page(client, key, cfg, state, gemini_key):
 
         # إنستغرام: يحتاج صورة دائماً. لو فشل نحفظه بقائمة الانتظار ويُعاد لاحقاً
         if ig_id:
-            if not images:
+            if ig_marker in ledger:
+                print(f"[{key}] [IG skip: already posted] {top}")
+            elif not images:
                 print(f"[{key}] [IG skip: no image] {top}")
             else:
                 caption = f"{body}\n\n{IG_FOOTER}" if body else IG_FOOTER
@@ -553,6 +649,11 @@ async def run_page(client, key, cfg, state, gemini_key):
                     urls = [fb_host_image(page_id, token, fit_for_instagram(b)) for b in images[:10]]
                     ig_post(ig_id, token, caption, urls)
                     print(f"[{key}] [IG OK] {top}")
+                    try:
+                        await ledger_add(client, ig_marker)
+                        ledger.add(ig_marker)
+                    except Exception as e:
+                        print(f"[{key}] WARNING ledger write failed (IG): {e}")
                 except Exception as e:
                     print(f"[{key}] [IG FAILED -> will retry] {top}: {str(e)[:200]}")
                     if urls:   # الصور رُفعت لكن النشر فشل: نعيد المحاولة لاحقاً بنفس الروابط
@@ -563,6 +664,7 @@ async def run_page(client, key, cfg, state, gemini_key):
 
 
 async def main():
+    print(f"[bot] version {VERSION}")
     api_id = int(need("TG_API_ID"))
     api_hash = need("TG_API_HASH")
     session = need("TG_SESSION")
