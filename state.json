@@ -393,7 +393,8 @@
       "b359a6898d7eeed608484d65433193a5f36bc4c9",
       "adab5b7971abeefd66aacfe6298b39dac3d02240",
       "a2594e7f810be63b882b91531c8dd6ba55c6c460",
-      "5b007e044845d06b967c196122377b7700cf6143"
+      "5b007e044845d06b967c196122377b7700cf6143",
+      "1bd6d0b5aaccfbcb3c7cc15fd6f2b4d8e214b484"
     ],
     "ig_last_id": 378080,
     "ig_hashes": [
@@ -1148,7 +1149,7 @@
         "source_hash": "",
         "facebook_status": "published",
         "instagram_status": "pending",
-        "created_at": 1791966749,
+        "created_at": 1791966833,
         "facebook_post_id": "585921651272636_122184282068824376",
         "comment_status": "published",
         "instagram_error": "Could not get Facebook photo ID for Instagram. Facebook post succeeded; Instagram will need a retry/manual check."
@@ -1158,12 +1159,21 @@
         "source_hash": "",
         "facebook_status": "published",
         "instagram_status": "pending",
-        "created_at": 1791966759,
+        "created_at": 1791966844,
         "facebook_post_id": "585921651272636_122184282194824376",
         "comment_status": "published",
-        "instagram_error": "Instagram create media API error 400: {'error': {'message': 'User is performing too many actions', 'type': 'OAuthException', 'is_transient': False, 'code': 9, 'error_subcode': 2207069, 'error_user_title': 'تم تجاوز حد إنشاء الوسائط', 'error_user_msg': 'لقد وصلت إلى الحد الأقصى لعدد المنشورات المسموح بإنشائها بواسطة واجهة API نشر المحتوى. للحصول على سياق إضافي، يرجى مراجعة وثائق المطوّرين \"واجهة Instagram Graph API - نشر المحتوى\".', 'fbtrace_id': 'ACmreU2H2fYZYZPIy4PSeim'}}"
+        "instagram_error": "Instagram create media API error 400: {'error': {'message': 'User is performing too many actions', 'type': 'OAuthException', 'is_transient': False, 'code': 9, 'error_subcode': 2207069, 'error_user_title': 'تم تجاوز حد إنشاء الوسائط', 'error_user_msg': 'لقد وصلت إلى الحد الأقصى لعدد المنشورات المسموح بإنشائها بواسطة واجهة API نشر المحتوى. للحصول على سياق إضافي، يرجى مراجعة وثائق المطوّرين \"واجهة Instagram Graph API - نشر المحتوى\".', 'fbtrace_id': 'AVKsNxQfPjPcuvChmrdGqzH'}}"
+      },
+      "378504": {
+        "source_id": 378504,
+        "source_hash": "1bd6d0b5aaccfbcb3c7cc15fd6f2b4d8e214b484",
+        "facebook_status": "published",
+        "instagram_status": "skipped_no_image",
+        "created_at": 1791966856,
+        "facebook_post_id": "585921651272636_122184282770824376",
+        "comment_status": "published"
       }
     },
-    "cooldown_until": 1791967105.7094584
+    "cooldown_until": 1791967243.455389
   }
 }
