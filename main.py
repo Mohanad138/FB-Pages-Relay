@@ -35,12 +35,17 @@ GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemma-3-27b
 HTTP = requests.Session()
 HTTP.headers.update({"User-Agent": "FB-Pages-Relay/2.0"})
 
-FOOTER = (
+FB_FOOTER = (
     "----------------------\n"
-    "يمكنكم متابعة الأخبار لحظة بلحظة عبر قناتنا على التلغرام\n"
+    "يمكنكم متابعة الأخبار لحظة بلحظة عبر قناتنا على التلكرام\n"
     "رابط القناة في أول تعليق"
 )
-FIRST_COMMENT = "رابط قناة التلغرام 👇\nhttps://t.me/Offsideahdaff"
+IG_FOOTER = (
+    "----------------------\n"
+    "يمكنكم متابعة الأخبار لحظة بلحظة عبر قناتنا على التلكرام\n"
+    "رابط القناة في البايو"
+)
+FIRST_COMMENT = "تابعنا على التلكرام 👇\nhttps://t.me/FabriAr1"
 
 PROMPTS = {
     "translate_ar": """أنت محرر صفحة كرة قدم عربية هدفها جذب تفاعل حقيقي وجلب متابعين لقناة تلغرام.
@@ -511,7 +516,9 @@ async def run_page(client, key, cfg, state, gemini_key):
             mark_done("[SKIP nothing to post]")
             continue
 
-        caption = f"{text}\n\n{FOOTER}" if text else FOOTER
+        # لكل منصة خاتمة مختلفة: رابط أول تعليق لفيسبوك، والبايو لإنستغرام.
+        fb_caption = f"{text}\n\n{FB_FOOTER}" if text else FB_FOOTER
+        ig_caption = f"{text}\n\n{IG_FOOTER}" if text else IG_FOOTER
 
         # احفظ حالة inflight قبل الطلب: إذا انقطع الاتصال بعد قبول Meta للطلب،
         # لن نعيد النشر تلقائياً وننشئ نسخة مكررة.
@@ -525,7 +532,7 @@ async def run_page(client, key, cfg, state, gemini_key):
         save_state(state)
 
         try:
-            fb_result = fb_post(page_id, token, caption, image_bytes)
+            fb_result = fb_post(page_id, token, fb_caption, image_bytes)
         except Exception as exc:
             posts[post_key]["facebook_error"] = str(exc)[:500]
             # قد تكون نتيجة الطلب غير مؤكدة؛ لا نعيد الطلب تلقائياً.
@@ -582,7 +589,7 @@ async def run_page(client, key, cfg, state, gemini_key):
                     if not image_url:
                         raise RuntimeError("Facebook did not return an image URL")
                     ig_result = instagram_publish(
-                        os.environ[ig_env].strip(), token, image_url, caption
+                        os.environ[ig_env].strip(), token, image_url, ig_caption
                     )
                     posts[post_key]["instagram_status"] = "published"
                     posts[post_key]["instagram_post_id"] = ig_result.get("id")
@@ -595,7 +602,7 @@ async def run_page(client, key, cfg, state, gemini_key):
                         st.setdefault("ig_pending", []).append({
                             "source_id": top_id,
                             "image_url": image_url,
-                            "caption": caption,
+                            "caption": ig_caption,
                             "attempts": 0,
                         })
                     print(f"[{key}] Instagram failed; Facebook will NOT be reposted: {exc}")
