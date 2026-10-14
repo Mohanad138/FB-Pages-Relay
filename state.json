@@ -1138,6 +1138,6 @@
         "instagram_error": "Instagram create media API error 400: {'error': {'message': 'User is performing too many actions', 'type': 'OAuthException', 'is_transient': False, 'code': 9, 'error_subcode': 2207069, 'error_user_title': 'تم تجاوز حد إنشاء الوسائط', 'error_user_msg': 'لقد وصلت إلى الحد الأقصى لعدد المنشورات المسموح بإنشائها بواسطة واجهة API نشر المحتوى. للحصول على سياق إضافي، يرجى مراجعة وثائق المطوّرين \"واجهة Instagram Graph API - نشر المحتوى\".', 'fbtrace_id': 'AKutvyc8-IwIk_2knGJMuuH'}}"
       }
     },
-    "cooldown_until": 1791964306.46082
+    "cooldown_until": 1791964472.3032193
   }
 }
