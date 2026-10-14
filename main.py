@@ -9,6 +9,7 @@ import math
 import hashlib
 import subprocess
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 import requests
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -38,7 +39,7 @@ PAGES = {
     },
 }
 
-VERSION = "2026-10-15-v6"
+VERSION = "2026-10-15-v7"
 STATE_FILE = "state.json"
 FIRST_RUN_COUNT = 5
 COOLDOWN_SECONDS = 600   # بعد فشل Gemini: استراحة 10 دقائق قبل المحاولة التالية
@@ -107,6 +108,32 @@ def load_state():
 def save_state(state):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f)
+
+
+def norm_text(t):
+    return re.sub(r"\s+", " ", (t or "")).strip()[:400]
+
+
+def _entities(t):
+    """الأسماء (كلمات تبدأ بحرف كبير) والأرقام: تفرّق بين خبرين بنفس القالب لكن بأسماء مختلفة"""
+    return set(re.findall(r"\b[A-Z][\w'’-]+|\b\d+\b", t))
+
+
+def is_near_duplicate(raw, recent, threshold=0.82):
+    """نفس الخبر انكتب مرتين بصياغة قريبة (المصدر يعيد النشر). نتطلب تشابه النص + تطابق الأسماء"""
+    a = norm_text(raw)
+    if not a:
+        return False
+    ea = _entities(a)
+    for old in recent:
+        sm = SequenceMatcher(None, a.lower(), old.lower())
+        if not (sm.real_quick_ratio() >= threshold and sm.quick_ratio() >= threshold and sm.ratio() >= threshold):
+            continue
+        eo = _entities(old)
+        union = ea | eo
+        if not union or len(ea & eo) / len(union) >= 0.75:
+            return True
+    return False
 
 
 def h(text):
@@ -470,6 +497,73 @@ async def ledger_add(client, marker):
     await client.send_message("me", marker)
 
 
+RUN_TAG = f"{os.environ.get('GITHUB_RUN_ID', 'local')}-{os.getpid()}"
+CLAIM_WAIT = 2.0     # ثواني ننتظر فيها لو تشغيلة ثانية تحجز نفس الخبر بنفس اللحظة
+CLAIM_TTL = 600      # حجز أقدم من 10 دقائق بدون نشر يُعتبر ميت (تشغيلة انهارت)
+
+
+async def ledger_scan(client, limit=150):
+    """آخر العلامات بسجل Saved Messages: [(id, text, date)] أو None لو فشلت القراءة"""
+    try:
+        out = []
+        async for m in client.iter_messages("me", limit=limit):
+            t = (m.message or "").strip()
+            if t.startswith("FBRELAY|"):
+                out.append((m.id, t, getattr(m, "date", None)))
+        return out
+    except Exception as e:
+        print(f"[ledger] scan failed: {e}")
+        return None
+
+
+async def claim_item(client, key, top):
+    """
+    قفل بين التشغيلات المتزامنة: كل تشغيلة تكتب «حجز» للخبر بـ Saved Messages ثم تقرأ.
+    الفائز هو صاحب أصغر رقم رسالة (ترتيب تيليجرام ثابت للكل). يرجع (نجح, رقم_رسالة_الحجز)
+    """
+    prefix = f"FBRELAY|{key}|{top}|"
+    snap = await ledger_scan(client)
+    if snap is None:
+        return True, None            # ما قدرنا نفحص: نكمل (الحماية الباقية تشتغل)
+    if any(t == prefix + "FB" for _, t, _ in snap):
+        return False, None           # منشور مسبقاً
+    try:
+        sent = await client.send_message("me", prefix + "CLAIM|" + RUN_TAG)
+    except Exception as e:
+        print(f"[ledger] claim write failed: {e}")
+        return True, None
+    await asyncio.sleep(CLAIM_WAIT)
+    snap = await ledger_scan(client)
+    if snap is None:
+        return True, sent.id
+    if any(t == prefix + "FB" for _, t, _ in snap):
+        await release_claim(client, sent.id)
+        return False, None
+    now = datetime.now(timezone.utc)
+    claims = []
+    for mid, t, dt in snap:
+        if t.startswith(prefix + "CLAIM|"):
+            if dt is not None:
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if (now - dt).total_seconds() > CLAIM_TTL and mid != sent.id:
+                    continue         # حجز ميت
+            claims.append(mid)
+    if not claims or min(claims) == sent.id:
+        return True, sent.id
+    await release_claim(client, sent.id)
+    return False, None
+
+
+async def release_claim(client, claim_id):
+    if not claim_id:
+        return
+    try:
+        await client.delete_messages("me", [claim_id])
+    except Exception as e:
+        print(f"[ledger] release failed: {e}")
+
+
 # ============ تيليجرام ============
 def classify(m):
     """photo | text | skip"""
@@ -589,6 +683,14 @@ async def run_page(client, key, cfg, state, gemini_key):
             done("[SKIP podcast]"); continue
         if raw and h(raw) in st["hashes"]:
             done("[SKIP duplicate]"); continue
+        if raw and is_near_duplicate(raw, st.get("recent_raw", [])):
+            done("[SKIP near-duplicate]"); continue
+
+        # حجز الخبر: لو تشغيلة ثانية تشتغل بنفس اللحظة ما ننشر نفس الخبر مرتين
+        ok_claim, claim_id = await claim_item(client, key, top)
+        if not ok_claim:
+            print(f"[{key}] [SKIP: already posted or claimed by another run] {top}")
+            continue
 
         text = ""
         if raw:
@@ -597,6 +699,7 @@ async def run_page(client, key, cfg, state, gemini_key):
             except Exception:
                 st["cooldown_until"] = time.time() + COOLDOWN_SECONDS
                 save_state(state)
+                await release_claim(client, claim_id)
                 raise
             if text is None:
                 done(f"[SKIP {skip_reason}]"); continue
@@ -614,7 +717,11 @@ async def run_page(client, key, cfg, state, gemini_key):
         body = text                                   # النص بدون فوتر (لإنستغرام)
         text = f"{text}\n\n{FOOTER}" if text else FOOTER
 
-        res = fb_post(page_id, token, text, images)   # يرمي خطأ لو فشل فلا تتقدم الحالة
+        try:
+            res = fb_post(page_id, token, text, images)   # يرمي خطأ لو فشل فلا تتقدم الحالة
+        except Exception:
+            await release_claim(client, claim_id)         # ما اننشر: نحرر الحجز ليُعاد لاحقاً
+            raise
         post_id = res.get("post_id") or res.get("id")
 
         # نسجّل النشر فوراً بسجل تلكرام (أقوى حماية من التكرار)
@@ -627,6 +734,7 @@ async def run_page(client, key, cfg, state, gemini_key):
         # نحفظ التقدم فوراً (قبل التعليق وإنستغرام) حتى لا يتكرر النشر لو صار أي خلل بعدها
         if raw:
             st["hashes"] = (st["hashes"] + [h(raw)])[-100:]
+            st["recent_raw"] = (st.get("recent_raw", []) + [norm_text(raw)])[-40:]
         done("[OK]")
         git_persist_state()
 
@@ -663,6 +771,55 @@ async def run_page(client, key, cfg, state, gemini_key):
         git_persist_state()
 
 
+async def diagnostics(client, gemini_key):
+    """تقرير فحص يطبع بالـ log عند التشغيل اليدوي (Run workflow)"""
+    print("=========== [check] تقرير الفحص ===========")
+    print(f"[check] version {VERSION}")
+    for key, cfg in PAGES.items():
+        pid = os.environ.get(cfg["page_id_env"], "").strip()
+        tok = os.environ.get(cfg["token_env"], "").strip()
+        print(f"[check] {key}: page id {'set' if pid else 'MISSING'} | token {'set' if tok else 'MISSING'} (len {len(tok)})")
+        if pid and tok:
+            try:
+                b = requests.get(f"{GRAPH}/{pid}", params={
+                    "fields": "name,instagram_business_account{id,username}", "access_token": tok}, timeout=30).json()
+                if "error" in b:
+                    e = b["error"]
+                    print(f"[check] Facebook/Instagram ERROR code={e.get('code')}: {str(e.get('message'))[:200]}")
+                else:
+                    print(f"[check] Facebook page: {b.get('name')}")
+                    ig = b.get("instagram_business_account")
+                    if ig:
+                        print(f"[check] Instagram linked: @{ig.get('username')} (id {ig.get('id')})")
+                        b2 = requests.get(f"{GRAPH}/{ig['id']}/content_publishing_limit", params={
+                            "fields": "quota_usage,config", "access_token": tok}, timeout=30).json()
+                        if "error" in b2:
+                            print(f"[check] Instagram publishing PERMISSION PROBLEM: {str(b2['error'].get('message'))[:200]}")
+                            print("[check] -> ولّد توكن جديد بإذني instagram_basic و instagram_content_publish وحدّث FB_PAGE_TOKEN_1")
+                        else:
+                            print(f"[check] Instagram publishing permission OK: {b2.get('data')}")
+                    else:
+                        print("[check] Instagram: NOT linked to this page (حوّل الحساب Professional واربطه بالصفحة) أو التوكن ينقصه instagram_basic")
+            except Exception as e:
+                print(f"[check] Facebook check failed: {e}")
+        try:
+            msgs = await client.get_messages(cfg["source"], limit=1)
+            if msgs:
+                print(f"[check] Telegram source @{cfg['source']}: latest id {msgs[0].id}")
+            else:
+                print(f"[check] Telegram source @{cfg['source']}: no messages")
+        except Exception as e:
+            print(f"[check] Telegram source error: {e}")
+    snap = await ledger_scan(client, 300)
+    print(f"[check] Saved Messages ledger markers: {None if snap is None else len(snap)}")
+    try:
+        out = gemini_generate("Reply with the single word: ok", gemini_key)
+        print(f"[check] Gemini OK: {out.strip()[:20]}")
+    except Exception as e:
+        print(f"[check] Gemini FAILED: {str(e)[:250]}")
+    print("========================================")
+
+
 async def main():
     print(f"[bot] version {VERSION}")
     api_id = int(need("TG_API_ID"))
@@ -678,6 +835,8 @@ async def main():
 
     state = load_state()
     failed = False
+    if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
+        await diagnostics(client, gemini_key)
     try:
         for key, cfg in PAGES.items():
             try:
