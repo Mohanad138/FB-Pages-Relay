@@ -1109,6 +1109,16 @@
         "created_at": 1791934891,
         "facebook_post_id": "585921651272636_122184248876824376",
         "comment_status": "published"
+      },
+      "378283": {
+        "source_id": 378283,
+        "source_hash": "",
+        "facebook_status": "published",
+        "instagram_status": "pending",
+        "created_at": 1791962713,
+        "facebook_post_id": "585921651272636_122184277808824376",
+        "comment_status": "published",
+        "instagram_error": "Could not get Facebook photo ID for Instagram. Facebook post succeeded; Instagram will need a retry/manual check."
       }
     },
     "cooldown_until": 1791962931.1802933
