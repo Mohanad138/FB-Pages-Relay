@@ -1,18 +1,17 @@
 name: Facebook Relay
 
 on:
-  repository_dispatch:
-    types: [run-bot]
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/15 * * * *"      # احتياطي فقط
+  repository_dispatch:
+    types: [run-bot]            # يشغله cron-job.org كل دقيقة
   workflow_dispatch:
 
 permissions:
   contents: write
 
-# يمنع تشغيل نسختين من هذا الـ workflow بالتزامن.
 concurrency:
-  group: fb-pages-relay
+  group: fb-relay
   cancel-in-progress: false
 
 jobs:
@@ -21,15 +20,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt
 
       - name: Run relay
         env:
@@ -39,104 +35,21 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FB_PAGE_ID_1: ${{ secrets.FB_PAGE_ID_1 }}
           FB_PAGE_TOKEN_1: ${{ secrets.FB_PAGE_TOKEN_1 }}
-          IG_USER_ID_1: ${{ secrets.IG_USER_ID_1 }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}   # اختياري: لو ما حطيته البوت يكتشفه تلقائياً
         run: python main.py
 
-      # لا نستخدم rebase على state.json، لأن ذلك سبب التعارض سابقاً.
-      # ندمج الحالة البعيدة والمحلية بصورة محافظة ثم نحاول الدفع.
-      - name: Save state safely
+      - name: Save state
         if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          set -e
           git config user.name "bot"
           git config user.email "bot@users.noreply.github.com"
-
-          if [ ! -f state.json ]; then
-            echo "state.json not found; nothing to save"
-            exit 0
-          fi
-
-          git add state.json
-          git diff --cached --quiet || git commit -m "update state"
-
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git merge origin/main --no-edit || {
-              echo "Merge conflict detected; merging state JSON safely"
-              git merge --abort || true
-              git show origin/main:state.json > state.remote.json 2>/dev/null || echo '{}' > state.remote.json
-              python - <<'PY'
-          import json, os
-          from pathlib import Path
-
-          local_path = Path("state.json")
-          remote_path = Path("state.remote.json")
-          local = json.loads(local_path.read_text(encoding="utf-8")) if local_path.exists() else {}
-          remote = json.loads(remote_path.read_text(encoding="utf-8")) if remote_path.exists() else {}
-
-          # لا نستبدل الحالة الأحدث بحالة أقدم. ندمج سجلّات الصفحات وهاشاتها.
-          merged = dict(remote)
-          for key, lv in local.items():
-              if not isinstance(lv, dict):
-                  merged.setdefault(key, lv)
-                  continue
-              rv = merged.get(key, {})
-              if not isinstance(rv, dict):
-                  rv = {}
-              item = dict(rv)
-              for field, value in lv.items():
-                  if field in ("hashes", "ig_hashes"):
-                      item[field] = list(dict.fromkeys((rv.get(field, []) or []) + (value or [])))[-300:]
-                  elif field == "posts":
-                      posts = dict(rv.get("posts", {}) or {})
-                      for post_key, post_value in (value or {}).items():
-                          old = posts.get(post_key, {})
-                          new = dict(old)
-                          new.update(post_value or {})
-                          # نجاح النشر المسجل لا يُستبدل بحالة أقدم/غير مكتملة.
-                          if old.get("facebook_status") == "published":
-                              new["facebook_status"] = "published"
-                              new["facebook_post_id"] = old.get("facebook_post_id", new.get("facebook_post_id"))
-                          posts[post_key] = new
-                      item[field] = posts
-                  elif field == "ig_pending":
-                      pending = {str(x.get("source_id")): x for x in (rv.get(field, []) or [])}
-                      for x in (value or []):
-                          pending.setdefault(str(x.get("source_id")), x)
-                      item[field] = list(pending.values())[-100:]
-                  elif field == "last_id":
-                      # الأقل أكثر أماناً حتى لا نتجاوز رسائل لم تُعالج في نسخة أخرى.
-                      vals = [x for x in (rv.get(field), value) if isinstance(x, int)]
-                      item[field] = min(vals) if vals else value
-                  elif field == "cooldown_until":
-                      item[field] = max(float(rv.get(field, 0) or 0), float(value or 0))
-                  elif field == "ig_fail":
-                      fails = dict(rv.get(field, {}) or {})
-                      fails.update(value or {})
-                      item[field] = fails
-                  else:
-                      item[field] = value
-              merged[key] = item
-
-          Path("state.json").write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
-          PY
-              # اجعل HEAD مبنياً على آخر main ثم أعد إضافة ملف الحالة المدموج.
-              git reset --mixed origin/main
-              git add state.json
-              git commit -m "merge state after conflict" || true
-            }
-
-            git add state.json
-            git diff --cached --quiet || git commit -m "update state"
-            if git push origin HEAD:main; then
-              rm -f state.remote.json
-              exit 0
-            fi
-            echo "Push failed on attempt $attempt; retrying"
-            sleep $((attempt * 2))
+          git add state.json || true
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "update state"
+          for i in 1 2 3 4 5; do
+            if git push; then exit 0; fi
+            # تعارض: نفضّل نسختنا من state.json
+            git pull --rebase -X theirs origin main || git rebase --abort
+            sleep 3
           done
-
-          echo "Could not save state after 5 attempts"
           exit 1
