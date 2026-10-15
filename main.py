@@ -36,11 +36,18 @@ PAGES = {
         "min_letters": 15,             # يتخطى منشورات المعاينة اللي نصها فاضي تقريباً
         "max_age_minutes": 180,        # يتخطى الأقدم من 3 ساعات. 0 = بدون حد
         "min_score": 7,                # ينشر فقط اللي يجيب تفاعل: درجة >= هذا الرقم (0 = ينشر كل شي)
+        "require_photo_and_text": True,   # ينشر فقط منشور فيه صورة + نص (لا نص وحده ولا صورة وحدها)
+        # تغطية المباريات الحية مرفوضة (قبل Gemini لتوفير الحصة). التشكيلة ونهاية المباراة المهمة تمر لـ Gemini
+        "live_patterns": [r"نهاية\s+الشوط", r"بين\s+الشوطين", r"إحماء|احماء", r"خلف\s+الأهداف|خلف\s+الاهداف",
+                          r"\bhalf[\s-]?time\b", r"\bwarm[\s-]?up\b"],
+        # نصوص قصيرة جداً فيها هدف/أسيست/تبديل/بطاقة = غالباً خبر حي أثناء المباراة
+        "live_short_patterns": [r"هدف|أسيست|اسيست|تبديل|بطاقة"],
+        "live_short_max_len": 70,
         "instagram": True,             # ينشر نفس المنشور على إنستغرام (لو الحساب Professional ومربوط بالصفحة)
     },
 }
 
-VERSION = "2026-10-16-v8"
+VERSION = "2026-10-16-v9"
 STATE_FILE = "state.json"
 FIRST_RUN_COUNT = 5
 COOLDOWN_SECONDS = 600   # بعد فشل Gemini: استراحة 10 دقائق قبل المحاولة التالية
@@ -94,6 +101,11 @@ PROMPTS = {
 - 6-8: أخبار مهمة أو مثيرة للنقاش عن دوريات كبرى.
 - 3-5: أخبار عادية أو أندية متوسطة.
 - 1-2: هامشية أو غير مثيرة.
+
+4) منشورات المباريات:
+- مرفوض دائماً (SCORE: 0): أي تغطية حية أو أثناء المباراة: بداية أو نهاية شوط، تسجيل هدف، أسيست، تبديل، بطاقة، إحماء اللاعبين، لقطات أو إحصائيات أثناء اللعب.
+- مقبول: التشكيلة الرسمية للمباراة (درجة 8 إذا لنادٍ كبير أو نجم أو مباراة مهمة، وإلا 6).
+- نتيجة نهاية المباراة: مقبولة فقط إذا كانت مباراة مهمة (نهائي، دوري أبطال، ديربي، منتخبات كبرى) أو لفرق كبيرة (درجة 8-10). غير ذلك SCORE: 2.
 
 الصيغة: السطر الأول فقط SCORE: الرقم، ثم اكتب المنشور بالعربية بأسلوب طبيعي وجذاب (إن كان بالعربية فأعد صياغته بأسلوب أفضل، وإن كان بلغة أخرى فترجمه كأن كاتباً عربياً كتبه).
 - حافظ على الأسماء والأرقام والحقائق ولا تضف معلومات من عندك.
@@ -711,6 +723,13 @@ async def run_page(client, key, cfg, state, gemini_key):
             done("[SKIP empty]"); continue
         if cfg.get("skip_podcast") and is_podcast_promo(raw):
             done("[SKIP podcast]"); continue
+        if cfg.get("require_photo_and_text") and not (raw and has_photo):
+            done("[SKIP needs photo+text]"); continue
+        if raw and cfg.get("live_patterns") and re.search("|".join(cfg["live_patterns"]), raw, re.I):
+            done("[SKIP live match coverage]"); continue
+        if (raw and cfg.get("live_short_patterns") and len(raw) <= cfg.get("live_short_max_len", 70)
+                and re.search("|".join(cfg["live_short_patterns"]), raw, re.I)):
+            done("[SKIP live match flash]"); continue
         if raw and h(raw) in st["hashes"]:
             done("[SKIP duplicate]"); continue
         if raw and is_near_duplicate(raw, st.get("recent_raw", [])):
