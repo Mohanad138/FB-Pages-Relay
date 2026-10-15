@@ -26,6 +26,7 @@ except Exception:   # لو pillow غير مثبتة، إنستغرام يستخ�
 PAGES = {
     # المصدر: حساب إنستغرام (عبر Business Discovery الرسمي). الحساب لازم يكون Business أو Creator وعام
     "omar": {
+        "enabled": False,              # معطّل: مصدر إنستغرام (عمر قحطان). فعّله True لو رجعت له
         "source_type": "instagram",
         "source_username": "omarqahtan87",
         "page_id_env": "FB_PAGE_ID_1",
@@ -36,7 +37,7 @@ PAGES = {
         "instagram": True,             # ينشر أيضاً على إنستغرام الخاص بك
     },
     "offside": {
-        "enabled": False,              # فعّله (True) لو تريد مصدر تلكرام أوفسايد (احتياطي)
+        "enabled": True,               # مفعّل: مصدر تلكرام أوفسايد
         "source": "Offsideahdaff",             # يوزرنيم القناة العامة بدون @
         "page_id_env": "FB_PAGE_ID_1",
         "token_env": "FB_PAGE_TOKEN_1",
