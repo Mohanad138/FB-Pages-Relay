@@ -24,30 +24,21 @@ except Exception:   # لو pillow غير مثبتة، إنستغرام يستخ�
 # المفتاح الداخلي (مثل "fabrizio") يتتبع حالة النشر. لو غيّرت المصدر غيّر المفتاح.
 # لإضافة صفحة ثانية: انسخ كتلة وغيّر المصدر وأسماء الأسرار (FB_PAGE_ID_2 ...).
 PAGES = {
-    # المفتاح الداخلي "offside" جديد عمداً: يبدأ التتبع من الصفر للمصدر الجديد
-    "offside": {
-        "source": "Offsideahdaff",             # يوزرنيم القناة العامة بدون @
+    # المصدر: حساب إنستغرام (عبر Business Discovery الرسمي). الحساب لازم يكون Business أو Creator وعام
+    "omar": {
+        "source_type": "instagram",
+        "source_username": "omarqahtan87",
         "page_id_env": "FB_PAGE_ID_1",
         "token_env": "FB_PAGE_TOKEN_1",
-        "mode": "engage_ar",                   # engage_ar | translate_ar | rephrase_ar | copy
-        "skip_podcast": False,
-        "skip_rt": True,               # يتخطى الريتويت (RT @...)
-        "skip_preview_video": True,    # يتخطى معاينات الفيديو
-        "min_letters": 15,             # يتخطى منشورات المعاينة اللي نصها فاضي تقريباً
-        "max_age_minutes": 180,        # يتخطى الأقدم من 3 ساعات. 0 = بدون حد
-        "min_score": 7,                # ينشر فقط اللي يجيب تفاعل: درجة >= هذا الرقم (0 = ينشر كل شي)
-        "require_photo_and_text": True,   # ينشر فقط منشور فيه صورة + نص (لا نص وحده ولا صورة وحدها)
-        # تغطية المباريات الحية مرفوضة (قبل Gemini لتوفير الحصة). التشكيلة ونهاية المباراة المهمة تمر لـ Gemini
-        "live_patterns": [r"نهاية\s+الشوط", r"بين\s+الشوطين", r"إحماء|احماء", r"خلف\s+الأهداف|خلف\s+الاهداف",
-                          r"\bhalf[\s-]?time\b", r"\bwarm[\s-]?up\b"],
-        # نصوص قصيرة جداً فيها هدف/أسيست/تبديل/بطاقة = غالباً خبر حي أثناء المباراة
-        "live_short_patterns": [r"هدف|أسيست|اسيست|تبديل|بطاقة"],
-        "live_short_max_len": 70,
-        "instagram": True,             # ينشر نفس المنشور على إنستغرام (لو الحساب Professional ومربوط بالصفحة)
+        "max_age_minutes": 360,        # يتخطى الأقدم من 6 ساعات (حتى لا ينشر قديم بعد انقطاع). 0 = بدون حد
+        "skip_videos": True,           # الفيديو والريلز مرفوضة
+        "arab_filter": True,           # يرفض أخبار الكرة العربية (إلا اللاعب/الشخصية المشهورة عالمياً)
+        "instagram": True,             # ينشر أيضاً على إنستغرام الخاص بك
     },
+    # لإضافة مصدر تلكرام بدلاً أو معه: انسخ كتلة بـ "source": "اسم_القناة" و "mode": "engage_ar"
 }
 
-VERSION = "2026-10-16-v9"
+VERSION = "2026-10-17-v10"
 STATE_FILE = "state.json"
 FIRST_RUN_COUNT = 5
 COOLDOWN_SECONDS = 600   # بعد فشل Gemini: استراحة 10 دقائق قبل المحاولة التالية
@@ -820,6 +811,224 @@ async def run_page(client, key, cfg, state, gemini_key):
         git_persist_state()
 
 
+# ============ مصدر إنستغرام (Business Discovery) ============
+ARAB_MARKERS_RE = re.compile("|".join([
+    "السعود", "سعودي", "الهلال", "النصر", "الاتحاد", "الأهلي", "الاهلي", "الزمالك", "الوداد", "الرجاء", "الترجي",
+    "الشباب", "الاتفاق", "الفتح", "الرائد", "التعاون", "الفيحاء", "الخليج", "العين", "الوحدة", "الشارقة", "الجزيرة",
+    "الدحيل", "السد", "الريان", "مصر", "المصري", "المغرب", "المغربي", "الجزائر", "الجزائري", "تونس", "التونسي",
+    "العراق", "العراقي", "الإمارات", "الامارات", "الإماراتي", "قطر", "القطري", "الأردن", "الاردن", "الكويت", "الكويتي",
+    "عمان", "البحرين", "لبنان", "اللبناني", "سوريا", "السوري", "فلسطين", "ليبيا", "السودان", "اليمن", "عربي", "عربية", "العرب",
+    r"saudi", r"al[\s-]?(nassr|hilal|ittihad|ahli|shabab)", r"egypt", r"morocc", r"algeri", r"tunis", r"\biraq",
+    r"qatar", r"emirat", r"\buae\b", r"jordan", r"kuwait", r"\barab",
+]), re.I)
+
+ARAB_CHECK_PROMPT = """هل هذا المنشور يخص كرة القدم العربية (الدوريات أو الأندية أو المنتخبات أو اللاعبين أو المدربين العرب في مصر والسعودية والمغرب والجزائر وتونس والعراق والإمارات وقطر والأردن والكويت وغيرها)؟
+استثناء: إذا كان الخبر عن لاعب أو مدرب أو شخصية مشهورة عالمياً (مثل كريستيانو رونالدو، بنزيما، نيمار، ماني، ميسي، صلاح، محرز) حتى لو يلعب بدوري عربي فهو مقبول.
+أجب بكلمة واحدة فقط: ARAB إذا يجب رفضه، أو OK إذا يُنشر.
+
+المنشور:
+"""
+
+
+def format_paragraphs(text):
+    """يدمج الأسطر المقطوعة بفارزة بفقرة واحدة، ويبقي الفراغ بعد الجمل المنتهية بنقطة أو ! أو ? أو :"""
+    t = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    t = re.sub(r"[\u200e\u200f\u202a-\u202e\u2066-\u2069]", "", t)   # علامات اتجاه الكتابة
+    out, prev, blank_before = "", None, False
+    for line in (ln.strip() for ln in t.split("\n")):
+        if not line:
+            blank_before = True
+            continue
+        if prev is None:
+            out = line
+        elif re.search(r"[،,]\s*$", prev):
+            out += " " + line                                   # الجملة مكملة: ندمج
+        else:
+            out += ("\n\n" if blank_before else "\n") + line    # جملة منتهية: نبقي الفراغ
+        prev, blank_before = line, False
+    return out
+
+
+def clean_ig_caption(text, username):
+    t = text or ""
+    t = re.sub(r"https?://\S+", "", t)
+    t = re.sub(r"@" + re.escape(username) + r"\b", "", t, flags=re.I)
+    t = strip_hashtags(t)
+    return format_paragraphs(t)
+
+
+def parse_ig_ts(ts):
+    try:
+        return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S%z").timestamp()
+    except Exception:
+        return 0.0
+
+
+def ig_fetch_source(ig_id, token, username, limit=25):
+    """آخر منشورات حساب Business/Creator عام (من الأقدم للأحدث)"""
+    last_err = None
+    for with_children in (True, False):
+        inner = "id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count"
+        if with_children:
+            inner += ",children{media_type,media_url}"
+        fields = f"business_discovery.username({username}){{username,media_count,media.limit({limit}){{{inner}}}}}"
+        body = requests.get(f"{GRAPH}/{ig_id}", params={"fields": fields, "access_token": token}, timeout=30).json()
+        if "error" in body:
+            last_err = body["error"]
+            continue
+        data = ((body.get("business_discovery") or {}).get("media") or {}).get("data", [])
+        data = [d for d in data if d.get("id")]
+        data.sort(key=lambda d: parse_ig_ts(d.get("timestamp", "")))
+        return data
+    raise RuntimeError(f"Instagram source error: {str((last_err or {}).get('message'))[:250]}")
+
+
+def ig_item_images(it):
+    """روابط الصور (صورة، أو صور الألبوم). فارغة لو فيديو أو ما فيه رابط"""
+    mt = it.get("media_type")
+    if mt == "CAROUSEL_ALBUM":
+        kids = ((it.get("children") or {}).get("data")) or []
+        urls = [k["media_url"] for k in kids if k.get("media_type") == "IMAGE" and k.get("media_url")]
+        if urls:
+            return urls
+        return [it["media_url"]] if it.get("media_url") else []
+    if mt == "IMAGE" and it.get("media_url"):
+        return [it["media_url"]]
+    return []
+
+
+def arab_check(text, gemini_key):
+    """True = يُرفض (كرة عربية). يستدعي Gemini فقط لو النص فيه إشارات عربية"""
+    if not ARAB_MARKERS_RE.search(text or ""):
+        return False
+    out = gemini_generate(ARAB_CHECK_PROMPT + text, gemini_key).strip().upper()
+    if out.startswith("OK"):
+        return False
+    return True          # ARAB أو رد غير واضح: نرفض احتياطاً
+
+
+async def run_ig_source(client, key, cfg, state, gemini_key):
+    page_id = need(cfg["page_id_env"])
+    token = need(cfg["token_env"])
+    username = cfg["source_username"]
+    st = state.setdefault(key, {"last_ts": None, "hashes": [], "recent_raw": []})
+
+    ig_id = os.environ.get("IG_USER_ID", "").strip() or st.get("ig_user_id")
+    if not ig_id:
+        ig_id = ig_discover(page_id, token)
+        if ig_id:
+            st["ig_user_id"] = ig_id
+    if not ig_id:
+        print(f"[{key}] [IG-SOURCE] cannot read @{username}: no linked Instagram professional account (or token lacks instagram_basic)")
+        raise RuntimeError("Instagram account not linked")
+    if st.get("ig_pending") and cfg.get("instagram"):
+        ig_retry_pending(key, st, state, ig_id, token)
+
+    wait = st.get("cooldown_until", 0) - time.time()
+    if wait > 0:
+        print(f"[{key}] Gemini cooldown, {int(wait)}s left - skipping this run")
+        return
+
+    media = ig_fetch_source(ig_id, token, username)
+    if st.get("last_ts") is None:
+        items = media[-FIRST_RUN_COUNT:]          # أول تشغيل: آخر 5 فقط
+    else:
+        items = [d for d in media if parse_ig_ts(d.get("timestamp", "")) > st["last_ts"]]
+    print(f"[{key}] @{username}: {len(items)} new items")
+
+    for it in items:
+        top = int(it["id"])
+        ts = parse_ig_ts(it.get("timestamp", ""))
+        raw = clean_ig_caption(it.get("caption", ""), username)
+
+        def done(why):
+            print(f"[{key}] {why} {top}")
+            st["last_ts"] = max(ts, st.get("last_ts") or 0)
+            save_state(state)
+
+        age_limit = cfg.get("max_age_minutes", 0)
+        if age_limit and ts and (time.time() - ts) > age_limit * 60:
+            done("[SKIP too old]"); continue
+        if cfg.get("skip_videos") and it.get("media_type") not in ("IMAGE", "CAROUSEL_ALBUM"):
+            done("[SKIP video/reel]"); continue
+        img_urls = ig_item_images(it)
+        if not img_urls:
+            done("[SKIP no usable image]"); continue
+        if raw and h(raw) in st["hashes"]:
+            done("[SKIP duplicate]"); continue
+        if raw and is_near_duplicate(raw, st.get("recent_raw", [])):
+            done("[SKIP near-duplicate]"); continue
+
+        ok_claim, claim_id = await claim_item(client, key, top)
+        if not ok_claim:
+            print(f"[{key}] [SKIP: already posted or claimed by another run] {top}")
+            continue
+
+        if cfg.get("arab_filter") and raw:
+            try:
+                is_arab = arab_check(raw, gemini_key)
+            except Exception:
+                st["cooldown_until"] = time.time() + COOLDOWN_SECONDS
+                save_state(state)
+                await release_claim(client, claim_id)
+                raise
+            if is_arab:
+                done("[SKIP arab football]"); continue
+
+        images = []
+        for u in img_urls[:10]:
+            r = requests.get(u, timeout=30)
+            if r.status_code == 200 and r.content:
+                images.append(r.content)
+        if not images:
+            await release_claim(client, claim_id)
+            done("[SKIP image download failed]"); continue
+
+        body = raw
+        text = f"{body}\n\n{FOOTER}" if body else FOOTER
+        fb_marker = f"FBRELAY|{key}|{top}|FB"
+        ig_marker = f"FBRELAY|{key}|{top}|IG"
+        try:
+            res = fb_post(page_id, token, text, images)
+        except Exception:
+            await release_claim(client, claim_id)
+            raise
+        post_id = res.get("post_id") or res.get("id")
+        try:
+            await ledger_add(client, fb_marker)
+        except Exception as e:
+            print(f"[{key}] WARNING ledger write failed: {e}")
+        if raw:
+            st["hashes"] = (st["hashes"] + [h(raw)])[-100:]
+            st["recent_raw"] = (st.get("recent_raw", []) + [norm_text(raw)])[-40:]
+        done("[OK]")
+        git_persist_state()
+
+        try:
+            fb_comment(token, post_id, FIRST_COMMENT)
+        except Exception as e:
+            print(f"[{key}] WARNING comment failed for {post_id}: {e}")
+
+        if cfg.get("instagram"):
+            caption = f"{body}\n\n{IG_FOOTER}" if body else IG_FOOTER
+            urls = None
+            try:
+                urls = [fb_host_image(page_id, token, fit_for_instagram(b)) for b in images[:10]]
+                ig_post(ig_id, token, caption, urls)
+                print(f"[{key}] [IG OK] {top}")
+                try:
+                    await ledger_add(client, ig_marker)
+                except Exception as e:
+                    print(f"[{key}] WARNING ledger write failed (IG): {e}")
+            except Exception as e:
+                print(f"[{key}] [IG FAILED -> will retry] {top}: {str(e)[:200]}")
+                if urls:
+                    st.setdefault("ig_pending", []).append(
+                        {"id": top, "caption": caption[:2200], "urls": urls, "tries": 1, "ts": int(time.time())})
+        save_state(state)
+        git_persist_state()
+
+
 async def diagnostics(client, gemini_key):
     """تقرير فحص يطبع بالـ log عند التشغيل اليدوي (Run workflow)"""
     print("=========== [check] تقرير الفحص ===========")
@@ -851,14 +1060,32 @@ async def diagnostics(client, gemini_key):
                         print("[check] Instagram: NOT linked to this page (حوّل الحساب Professional واربطه بالصفحة) أو التوكن ينقصه instagram_basic")
             except Exception as e:
                 print(f"[check] Facebook check failed: {e}")
-        try:
-            msgs = await client.get_messages(cfg["source"], limit=1)
-            if msgs:
-                print(f"[check] Telegram source @{cfg['source']}: latest id {msgs[0].id}")
-            else:
-                print(f"[check] Telegram source @{cfg['source']}: no messages")
-        except Exception as e:
-            print(f"[check] Telegram source error: {e}")
+        if cfg.get("source_type") == "instagram":
+            try:
+                igv = os.environ.get("IG_USER_ID", "").strip() or ig_discover(pid, tok)
+                if not igv:
+                    print("[check] Instagram source: can't read (no linked Instagram account)")
+                else:
+                    b3 = requests.get(f"{GRAPH}/{igv}", params={
+                        "fields": f"business_discovery.username({cfg['source_username']}){{username,followers_count,media_count}}",
+                        "access_token": tok}, timeout=30).json()
+                    if "error" in b3:
+                        print(f"[check] Instagram source @{cfg['source_username']} ERROR: {str(b3['error'].get('message'))[:220]}")
+                        print("[check] -> الحساب لازم يكون Business أو Creator وعام. حساب شخصي ما يشتغل مع Business Discovery")
+                    else:
+                        bd = b3.get("business_discovery", {})
+                        print(f"[check] Instagram source OK: @{bd.get('username')} | followers {bd.get('followers_count')} | posts {bd.get('media_count')}")
+            except Exception as e:
+                print(f"[check] Instagram source check failed: {e}")
+        else:
+            try:
+                msgs = await client.get_messages(cfg["source"], limit=1)
+                if msgs:
+                    print(f"[check] Telegram source @{cfg['source']}: latest id {msgs[0].id}")
+                else:
+                    print(f"[check] Telegram source @{cfg['source']}: no messages")
+            except Exception as e:
+                print(f"[check] Telegram source error: {e}")
     snap = await ledger_scan(client, 300)
     print(f"[check] Saved Messages ledger markers: {None if snap is None else len(snap)}")
     try:
@@ -889,7 +1116,10 @@ async def main():
     try:
         for key, cfg in PAGES.items():
             try:
-                await run_page(client, key, cfg, state, gemini_key)
+                if cfg.get("source_type") == "instagram":
+                    await run_ig_source(client, key, cfg, state, gemini_key)
+                else:
+                    await run_page(client, key, cfg, state, gemini_key)
             except Exception as e:
                 failed = True
                 print(f"[{key}] FAILED: {e}")
