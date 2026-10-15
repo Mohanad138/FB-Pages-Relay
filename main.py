@@ -24,22 +24,23 @@ except Exception:   # لو pillow غير مثبتة، إنستغرام يستخ�
 # المفتاح الداخلي (مثل "fabrizio") يتتبع حالة النشر. لو غيّرت المصدر غيّر المفتاح.
 # لإضافة صفحة ثانية: انسخ كتلة وغيّر المصدر وأسماء الأسرار (FB_PAGE_ID_2 ...).
 PAGES = {
-    "fabrizio": {
-        "source": "FabrizioRomanoTG",          # يوزرنيم القناة العامة بدون @
+    # المفتاح الداخلي "offside" جديد عمداً: يبدأ التتبع من الصفر للمصدر الجديد
+    "offside": {
+        "source": "Offsideahdaff",             # يوزرنيم القناة العامة بدون @
         "page_id_env": "FB_PAGE_ID_1",
         "token_env": "FB_PAGE_TOKEN_1",
-        "mode": "translate_ar",                # translate_ar | rephrase_ar | copy
-        "skip_podcast": True,
+        "mode": "engage_ar",                   # engage_ar | translate_ar | rephrase_ar | copy
+        "skip_podcast": False,
         "skip_rt": True,               # يتخطى الريتويت (RT @...)
-        "skip_preview_video": True,    # يتخطى معاينات فيديو X
-        "min_letters": 15,             # يتخطى منشورات المعاينة اللي نصها فاضي تقريباً (اسم + ايموجي)
-        "max_age_minutes": 180,        # يتخطى الأخبار الأقدم من 3 ساعات (حتى لا ينشر قديم بعد انقطاع Gemini). 0 = بدون حد
-        "min_score": 7,                # ينشر فقط المهم: درجة التفاعل المتوقعة >= هذا الرقم (0 = ينشر كل شي)
+        "skip_preview_video": True,    # يتخطى معاينات الفيديو
+        "min_letters": 15,             # يتخطى منشورات المعاينة اللي نصها فاضي تقريباً
+        "max_age_minutes": 180,        # يتخطى الأقدم من 3 ساعات. 0 = بدون حد
+        "min_score": 7,                # ينشر فقط اللي يجيب تفاعل: درجة >= هذا الرقم (0 = ينشر كل شي)
         "instagram": True,             # ينشر نفس المنشور على إنستغرام (لو الحساب Professional ومربوط بالصفحة)
     },
 }
 
-VERSION = "2026-10-15-v7"
+VERSION = "2026-10-16-v8"
 STATE_FILE = "state.json"
 FIRST_RUN_COUNT = 5
 COOLDOWN_SECONDS = 600   # بعد فشل Gemini: استراحة 10 دقائق قبل المحاولة التالية
@@ -80,6 +81,28 @@ PROMPTS = {
 
 النص:
 """,
+    "engage_ar": """أنت محرر صفحة كرة قدم عربية هدفها جذب التفاعل وزيادة متابعي قناة تلكرام.
+اقرأ المنشور (بأي لغة) وقرر:
+
+1) إذا كان إعلاناً أو ترويجاً أو دعوة اشتراك أو بيع أو مراهنات أو كود خصم: أجب SKIP فقط.
+
+2) أخبار الكرة العربية مرفوضة: الدوريات والأندية والمنتخبات واللاعبون والمدربون العرب (مصر، السعودية، المغرب، الجزائر، تونس، العراق، الإمارات، قطر، الأردن، الكويت...) وكل ما يخص كرة القدم المحلية العربية.
+الاستثناء الوحيد: خبر عن لاعب أو مدرب مشهور عالمياً حتى لو يلعب بدوري عربي (مثل كريستيانو رونالدو، بنزيما، نيمار، ماني، ميسي، صلاح، محرز...). في حالة الرفض اكتب: SCORE: 0
+
+3) غير ذلك أعطِ درجة من 1 إلى 10 لاحتمال تفاعل الجمهور العربي معه. أي نوع منشور مقبول (خبر، رقم قياسي، إحصائية، مقارنة، لقطة، صورة، موقف طريف) طالما سيثير التفاعل:
+- 9-10: نجوم عالميون (ميسي، رونالدو، مبابي، هالاند، صلاح...) أو أندية كبرى (ريال مدريد، برشلونة، سيتي، يونايتد، ليفربول، أرسنال، تشلسي، باريس، بايرن...)، صفقات مؤكدة، أرقام قياسية، مواقف مثيرة للجدل أو الطرافة.
+- 6-8: أخبار مهمة أو مثيرة للنقاش عن دوريات كبرى.
+- 3-5: أخبار عادية أو أندية متوسطة.
+- 1-2: هامشية أو غير مثيرة.
+
+الصيغة: السطر الأول فقط SCORE: الرقم، ثم اكتب المنشور بالعربية بأسلوب طبيعي وجذاب (إن كان بالعربية فأعد صياغته بأسلوب أفضل، وإن كان بلغة أخرى فترجمه كأن كاتباً عربياً كتبه).
+- حافظ على الأسماء والأرقام والحقائق ولا تضف معلومات من عندك.
+- حافظ على تقسيم الأسطر.
+- بدون هاشتاغات، وبدون روابط أو إشارات لحسابات أو قنوات.
+- أجب بالصيغة المطلوبة فقط بدون شرح.
+
+المنشور:
+""",
     "rephrase_ar": """أعد صياغة الخبر التالي بالعربية بأسلوب صحفي طبيعي مع الحفاظ على كل الأرقام والتفاصيل.
 - إذا كان إعلاناً أو ترويجاً مدفوعاً أجب بكلمة SKIP فقط، وعند الشك انشره.
 - أجب بالنص النهائي فقط.
@@ -114,24 +137,23 @@ def norm_text(t):
     return re.sub(r"\s+", " ", (t or "")).strip()[:400]
 
 
-def _entities(t):
-    """الأسماء (كلمات تبدأ بحرف كبير) والأرقام: تفرّق بين خبرين بنفس القالب لكن بأسماء مختلفة"""
-    return set(re.findall(r"\b[A-Z][\w'’-]+|\b\d+\b", t))
+def _words(t):
+    return set(re.findall(r"\w{3,}", t.lower()))
 
 
 def is_near_duplicate(raw, recent, threshold=0.82):
-    """نفس الخبر انكتب مرتين بصياغة قريبة (المصدر يعيد النشر). نتطلب تشابه النص + تطابق الأسماء"""
+    """نفس الخبر انكتب مرتين بصياغة قريبة. نتطلب تشابه النص + تطابق الكلمات (يفرّق بين خبرين بنفس القالب وأسماء مختلفة)"""
     a = norm_text(raw)
     if not a:
         return False
-    ea = _entities(a)
+    wa = _words(a)
     for old in recent:
         sm = SequenceMatcher(None, a.lower(), old.lower())
         if not (sm.real_quick_ratio() >= threshold and sm.quick_ratio() >= threshold and sm.ratio() >= threshold):
             continue
-        eo = _entities(old)
-        union = ea | eo
-        if not union or len(ea & eo) / len(union) >= 0.75:
+        wo = _words(old)
+        union = wa | wo
+        if not union or len(wa & wo) / len(union) >= 0.8:
             return True
     return False
 
@@ -274,6 +296,9 @@ def parse_score(out):
     return min(int(m.group(1)), 10), out[m.end():].strip()
 
 
+SCORED_MODES = ("translate_ar", "engage_ar")
+
+
 def ai_process(raw, mode, gemini_key, min_score=0):
     """يرجع (النص, سبب_التخطي). لو النص None فالسبب: ad أو low score N"""
     if mode == "copy":
@@ -281,17 +306,22 @@ def ai_process(raw, mode, gemini_key, min_score=0):
     out = strip_hashtags(gemini_generate(PROMPTS[mode] + raw, gemini_key))
     if out.upper().startswith("SKIP"):
         return None, "ad"
-    if mode == "translate_ar":
+    if mode in SCORED_MODES:
         score, out = parse_score(out)
         if out.upper().startswith("SKIP"):
             return None, "ad"
-        if "here we go" in raw.lower():
+        if mode == "translate_ar" and "here we go" in raw.lower():
             score = 10          # Here we go تُنشر دائماً
+        if score is None and mode == "engage_ar":
+            return None, "no score"   # بدون درجة ما نقدر نتأكد أنه مو كرة عربية: نتخطاه
         if score is not None:
             print(f"[score] {score} (min {min_score})")
             if score < min_score:
                 return None, f"low score {score}"
-        out = enforce_here_we_go(raw, out)
+        if not out.strip():
+            return None, "empty"
+        if mode == "translate_ar":
+            out = enforce_here_we_go(raw, out)
     return out, None
 
 
