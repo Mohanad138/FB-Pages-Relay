@@ -84,6 +84,15 @@ IG_FOOTER = (
 )
 IG_MAX_TRIES = 8   # عدد محاولات إعادة النشر على إنستغرام قبل الاستسلام
 
+# منشورات التشكيلة (قبل المباراة): فيسبوك فقط. إنستغرام يبقى بالفوتر العادي بدون تعليق
+LINEUP_FOOTER = (
+    "----------------------\n"
+    "رابط مشاهدة المباراة في اول تعليق"
+)
+LINEUP_COMMENT = "رابط مشاهدة المباراة 👇\nhttps://t.me/FabriAr2/132"
+LINEUP_LINE_RE = re.compile(r"^\s*LINEUP\s*[:：]\s*(YES|NO)[^\n]*\n?", re.I)
+LINEUP_WORDS_RE = re.compile(r"التشكيل|تشكيل|line-?up|starting\s*(?:xi|11|eleven)|\bxi\b", re.I)
+
 PROMPTS = {
     "translate_ar": """أنت محرر صفحة أخبار كرة قدم عربية هدفها جذب التفاعل.
 أعطِ الخبر درجة من 1 إلى 10 حسب احتمال تفاعل الجمهور العربي معه:
@@ -120,7 +129,7 @@ PROMPTS = {
 - مقبول: التشكيلة الرسمية للمباراة (درجة 8 إذا لنادٍ كبير أو نجم أو مباراة مهمة، وإلا 6).
 - نتيجة نهاية المباراة: مقبولة فقط إذا كانت مباراة مهمة (نهائي، دوري أبطال، ديربي، منتخبات كبرى) أو لفرق كبيرة (درجة 8-10). غير ذلك SCORE: 2.
 
-الصيغة: السطر الأول فقط SCORE: الرقم، ثم اكتب المنشور بالعربية بأسلوب طبيعي وجذاب (إن كان بالعربية فأعد صياغته بأسلوب أفضل، وإن كان بلغة أخرى فترجمه كأن كاتباً عربياً كتبه).
+الصيغة: السطر الأول SCORE: الرقم. إذا كان المنشور تشكيلة (رسمية أو متوقعة) لمباراة محددة لم تبدأ بعد فاكتب سطراً ثانياً LINEUP: YES. وإذا لم يكن كذلك، أو كانت المباراة بدأت أو انتهت، فلا تكتب هذا السطر أبداً. ثم اكتب المنشور بالعربية بأسلوب طبيعي وجذاب (إن كان بالعربية فأعد صياغته بأسلوب أفضل، وإن كان بلغة أخرى فترجمه كأن كاتباً عربياً كتبه).
 - حافظ على الأسماء والأرقام والحقائق ولا تضف معلومات من عندك.
 - اكتب بصيغة المصدر نفسه، كأنك أنت فابريزيو رومانو ولكن بالعربي: لا تذكر اسم فابريزيو رومانو أبداً، ولا تنسب الخبر لأي أحد (ممنوع «يؤكد» و«يقول» و«يكشف» و«وفقاً لـ» و«بحسب» و«نقلاً عن»). اكتب الخبر مباشرة، مثال: «جود بيلينغهام يجدد عقده مع ريال مدريد حتى يونيو 2031».
 - حافظ على تقسيم الأسطر.
@@ -344,32 +353,45 @@ SCORED_MODES = ("translate_ar", "engage_ar")
 
 
 def ai_process(raw, mode, gemini_key, min_score=0):
-    """يرجع (النص, سبب_التخطي). لو النص None فالسبب: ad أو low score N"""
+    """يرجع (النص, سبب_التخطي, هل_تشكيلة_قبل_المباراة). لو النص None فالسبب: ad أو low score N"""
+    lineup = False
     if mode == "copy":
-        return raw, None
+        return raw, None, False
     out = strip_hashtags(gemini_generate(PROMPTS[mode] + raw, gemini_key))
     if out.upper().startswith("SKIP"):
-        return None, "ad"
+        return None, "ad", False
     if mode in SCORED_MODES:
+        first_line = out.split("\n", 1)[0]
+        if re.search(r"LINEUP\s*[:：]\s*YES", first_line, re.I):
+            lineup = True                  # لو كتبها Gemini بنفس سطر الدرجة
         score, out = parse_score(out)
+        m = LINEUP_LINE_RE.match(out)
+        if m:
+            lineup = lineup or m.group(1).upper() == "YES"
+            out = out[m.end():].strip()
+        out = re.sub(r"(?im)^\s*LINEUP\s*[:：].*$\n?", "", out).strip()
         if out.upper().startswith("SKIP"):
-            return None, "ad"
+            return None, "ad", False
         if mode == "translate_ar" and "here we go" in raw.lower():
             score = 10          # Here we go تُنشر دائماً
         if score is None and mode == "engage_ar":
-            return None, "no score"   # بدون درجة ما نقدر نتأكد أنه مو كرة عربية: نتخطاه
+            return None, "no score", False   # بدون درجة ما نقدر نتأكد أنه مو كرة عربية: نتخطاه
         if score is not None:
             print(f"[score] {score} (min {min_score})")
             if score < min_score:
-                return None, f"low score {score}"
+                return None, f"low score {score}", False
         if not out.strip():
-            return None, "empty"
+            return None, "empty", False
         if mode == "translate_ar":
             out = enforce_here_we_go(raw, out)
     out = strip_fabrizio_attribution(out)
     if not out.strip():
-        return None, "empty"
-    return out, None
+        return None, "empty", False
+    # التشكيلة فقط بمصدر engage_ar، ونتأكد بالكود أن النص فعلاً عن تشكيلة
+    lineup = bool(lineup and mode == "engage_ar" and LINEUP_WORDS_RE.search(f"{raw} {out}"))
+    if lineup:
+        print("[lineup] pre-match lineup post detected")
+    return out, None, lineup
 
 
 # ============ فيسبوك ============
@@ -777,9 +799,10 @@ async def run_page(client, key, cfg, state, gemini_key):
             continue
 
         text = ""
+        is_lineup = False
         if raw:
             try:
-                text, skip_reason = ai_process(raw, cfg["mode"], gemini_key, cfg.get("min_score", 0))
+                text, skip_reason, is_lineup = ai_process(raw, cfg["mode"], gemini_key, cfg.get("min_score", 0))
             except Exception:
                 st["cooldown_until"] = time.time() + COOLDOWN_SECONDS
                 save_state(state)
@@ -799,7 +822,8 @@ async def run_page(client, key, cfg, state, gemini_key):
             done("[SKIP nothing to post]"); continue
 
         body = text                                   # النص بدون فوتر (لإنستغرام)
-        text = f"{text}\n\n{FOOTER}" if text else FOOTER
+        fb_footer = LINEUP_FOOTER if is_lineup else FOOTER       # التشكيلة: فوتر خاص بفيسبوك فقط
+        text = f"{text}\n\n{fb_footer}" if text else fb_footer
 
         try:
             res = fb_post(page_id, token, text, images)   # يرمي خطأ لو فشل فلا تتقدم الحالة
@@ -824,7 +848,7 @@ async def run_page(client, key, cfg, state, gemini_key):
 
         # التعليق الأول: لو فشل لا نفشل المنشور (وإلا ينشر مرة ثانية)
         try:
-            fb_comment(token, post_id, FIRST_COMMENT)
+            fb_comment(token, post_id, LINEUP_COMMENT if is_lineup else FIRST_COMMENT)
         except Exception as e:
             print(f"[{key}] WARNING comment failed for {post_id}: {e}")
 
