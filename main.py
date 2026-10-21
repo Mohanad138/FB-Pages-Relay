@@ -1189,6 +1189,95 @@ async def run_ig_source(client, key, cfg, state, gemini_key):
         git_persist_state()
 
 
+# ============ تعليق على المنشورات اليدوية (اللي تنشرها أنت) ============
+MANUAL_COMMENTS = True        # False لإيقاف الميزة
+MANUAL_MIN_AGE = 120          # ثواني: ننتظر قليلاً (منشورات البوت تأخذ تعليقها بثواني)
+MANUAL_MAX_PER_RUN = 5        # حد أعلى للتعليقات بالتشغيلة الواحدة
+MANUAL_MAX_TRIES = 3          # لو فشل التعليق 3 مرات نتركه (مثلاً إذن ناقص)
+BOT_COMMENT_MARKERS = ("تابعنا على التلكرام", "رابط مشاهدة المباراة", "شاهد الهدف")
+
+
+def _fb_has_bot_comment(token, post_id):
+    b = fb_check(requests.get(f"{GRAPH}/{post_id}/comments", params={
+        "fields": "message", "limit": 25, "filter": "toplevel", "access_token": token}, timeout=30))
+    return any(any(mk in (c.get("message") or "") for mk in BOT_COMMENT_MARKERS) for c in b.get("data", []))
+
+
+def _ig_has_bot_comment(token, media_id):
+    b = fb_check(requests.get(f"{GRAPH}/{media_id}/comments", params={
+        "fields": "text", "limit": 25, "access_token": token}, timeout=30))
+    return any(any(mk in (c.get("text") or "") for mk in BOT_COMMENT_MARKERS) for c in b.get("data", []))
+
+
+def handle_manual_posts(state, pkey, page_id, token, ig_id):
+    """يعلّق (نفس تعليق البوت) على منشورات فيسبوك وإنستغرام اللي تنشرها أنت يدوياً (مثل الفيديوهات).
+    يبدأ من لحظة تفعيل الميزة فقط: ما يعلّق على المنشورات القديمة."""
+    ms = state.setdefault("_manual", {}).setdefault(pkey, {})
+    now = time.time()
+    if not ms.get("since"):
+        ms["since"] = now
+        ms["fb"], ms["ig"], ms["tries"] = [], [], {}
+        print(f"[manual] enabled: will comment on manual posts published from now on ({pkey})")
+        return
+    ms.setdefault("fb", [])
+    ms.setdefault("ig", [])
+    ms.setdefault("tries", {})
+    done_fb, done_ig, tries = set(ms["fb"]), set(ms["ig"]), ms["tries"]
+    budget = MANUAL_MAX_PER_RUN
+
+    def eligible(pid, ts, done):
+        return pid not in done and ts and ts >= ms["since"] and now - ts >= MANUAL_MIN_AGE
+
+    def failed(pid, done, err):
+        tries[pid] = tries.get(pid, 0) + 1
+        print(f"[manual] WARNING comment failed ({tries[pid]}/{MANUAL_MAX_TRIES}) {pid}: {str(err)[:160]}")
+        if tries[pid] >= MANUAL_MAX_TRIES:
+            done.add(pid)
+
+    # فيسبوك
+    try:
+        b = fb_check(requests.get(f"{GRAPH}/{page_id}/posts", params={
+            "fields": "id,created_time", "limit": 10, "access_token": token}, timeout=30))
+        for p in sorted(b.get("data", []), key=lambda x: x.get("created_time", "")):
+            pid, ts = p.get("id"), parse_ig_ts(p.get("created_time", ""))
+            if not pid or not eligible(pid, ts, done_fb) or budget <= 0:
+                continue
+            try:
+                if not _fb_has_bot_comment(token, pid):
+                    fb_comment(token, pid, FIRST_COMMENT)
+                    print(f"[manual] [FB comment added] {pid}")
+                done_fb.add(pid)
+                budget -= 1
+            except Exception as e:
+                failed(pid, done_fb, e)
+    except Exception as e:
+        print(f"[manual] FB list failed: {str(e)[:160]}")
+
+    # إنستغرام
+    if ig_id:
+        try:
+            b = fb_check(requests.get(f"{GRAPH}/{ig_id}/media", params={
+                "fields": "id,timestamp", "limit": 10, "access_token": token}, timeout=30))
+            for m in sorted(b.get("data", []), key=lambda x: x.get("timestamp", "")):
+                mid, ts = m.get("id"), parse_ig_ts(m.get("timestamp", ""))
+                if not mid or not eligible(mid, ts, done_ig) or budget <= 0:
+                    continue
+                try:
+                    if not _ig_has_bot_comment(token, mid):
+                        if not ig_comment(token, mid, IG_COMMENT):
+                            raise RuntimeError("Instagram comment failed")
+                        print(f"[manual] [IG comment added] {mid}")
+                    done_ig.add(mid)
+                    budget -= 1
+                except Exception as e:
+                    failed(mid, done_ig, e)
+        except Exception as e:
+            print(f"[manual] IG list failed: {str(e)[:160]}")
+
+    ms["fb"], ms["ig"] = list(done_fb)[-200:], list(done_ig)[-200:]
+    ms["tries"] = {k: v for k, v in tries.items() if k not in done_fb and k not in done_ig}
+
+
 async def diagnostics(client, gemini_key):
     """تقرير فحص يطبع بالـ log عند التشغيل اليدوي (Run workflow)"""
     print("=========== [check] تقرير الفحص ===========")
@@ -1287,6 +1376,21 @@ async def main():
             except Exception as e:
                 failed = True
                 print(f"[{key}] FAILED: {e}")
+        if MANUAL_COMMENTS:
+            seen_pages = set()
+            for key, cfg in PAGES.items():
+                if cfg.get("enabled", True) is False or cfg["page_id_env"] in seen_pages:
+                    continue
+                seen_pages.add(cfg["page_id_env"])
+                try:
+                    page_id, token = need(cfg["page_id_env"]), need(cfg["token_env"])
+                    ig_id = None
+                    if cfg.get("instagram"):
+                        ig_id = (os.environ.get("IG_USER_ID", "").strip()
+                                 or state.get(key, {}).get("ig_user_id") or ig_discover(page_id, token))
+                    handle_manual_posts(state, cfg["page_id_env"], page_id, token, ig_id)
+                except Exception as e:
+                    print(f"[manual] FAILED: {str(e)[:200]}")
     finally:
         save_state(state)
         git_persist_state()
