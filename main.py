@@ -83,6 +83,8 @@ IG_FOOTER = (
     "رابط القناة في البايو"
 )
 IG_MAX_TRIES = 8   # عدد محاولات إعادة النشر على إنستغرام قبل الاستسلام
+# تعليق إنستغرام (أول تعليق بكل منشور). يحتاج إذن instagram_manage_comments بالتوكن
+IG_COMMENT = "تابعنا على التلكرام\nرابط القناة في البايو"
 
 # منشورات التشكيلة (قبل المباراة): فيسبوك فقط. إنستغرام يبقى بالفوتر العادي بدون تعليق
 LINEUP_FOOTER = (
@@ -575,6 +577,25 @@ def ig_post(ig_id, token, caption, image_urls):
                                   data={"creation_id": container, "access_token": token}, timeout=60))
 
 
+def ig_comment(token, media_id, message):
+    """تعليق على منشور إنستغرام. لا يرمي خطأ أبداً: لو فشل ما نفشل المنشور (وإلا يُنشر مرتين)"""
+    if not media_id:
+        print("[IG] WARNING comment skipped: no media id returned")
+        return False
+    for attempt in range(2):
+        try:
+            fb_check(requests.post(f"{GRAPH}/{media_id}/comments",
+                                   data={"message": message, "access_token": token}, timeout=60))
+            return True
+        except Exception as e:
+            if attempt == 0:
+                time.sleep(5)
+                continue
+            print(f"[IG] WARNING comment failed for {media_id}: {str(e)[:200]} "
+                  f"(تأكد أن التوكن فيه instagram_manage_comments)")
+    return False
+
+
 def ig_retry_pending(key, st, state, ig_id, token):
     """إعادة محاولة منشورات إنستغرام اللي فشلت سابقاً (فيسبوك نُشر، إنستغرام لا)"""
     keep = []
@@ -583,7 +604,8 @@ def ig_retry_pending(key, st, state, ig_id, token):
             print(f"[{key}] [IG GIVE UP] {item.get('id')} after {item.get('tries')} tries")
             continue
         try:
-            ig_post(ig_id, token, item["caption"], item["urls"])
+            res = ig_post(ig_id, token, item["caption"], item["urls"])
+            ig_comment(token, (res or {}).get("id"), IG_COMMENT)
             print(f"[{key}] [IG OK retry] {item['id']}")
         except Exception as e:
             item["tries"] = item.get("tries", 0) + 1
@@ -888,7 +910,8 @@ async def run_page(client, key, cfg, state, gemini_key):
                 urls = None
                 try:
                     urls = [fb_host_image(page_id, token, fit_for_instagram(b)) for b in images[:10]]
-                    ig_post(ig_id, token, caption, urls)
+                    res_ig = ig_post(ig_id, token, caption, urls)
+                    ig_comment(token, (res_ig or {}).get("id"), IG_COMMENT)
                     print(f"[{key}] [IG OK] {top}")
                     try:
                         await ledger_add(client, ig_marker)
@@ -1150,7 +1173,8 @@ async def run_ig_source(client, key, cfg, state, gemini_key):
             urls = None
             try:
                 urls = [fb_host_image(page_id, token, fit_for_instagram(b)) for b in images[:10]]
-                ig_post(ig_id, token, caption, urls)
+                res_ig = ig_post(ig_id, token, caption, urls)
+                ig_comment(token, (res_ig or {}).get("id"), IG_COMMENT)
                 print(f"[{key}] [IG OK] {top}")
                 try:
                     await ledger_add(client, ig_marker)
