@@ -47,7 +47,12 @@ PAGES = {
         "skip_preview_video": True,    # يتخطى معاينات الفيديو
         "min_letters": 15,             # يتخطى منشورات المعاينة اللي نصها فاضي تقريباً
         "max_age_minutes": 180,        # يتخطى الأقدم من 3 ساعات. 0 = بدون حد
-        "min_score": 7,                # ينشر فقط اللي يجيب تفاعل: درجة >= هذا الرقم (0 = ينشر كل شي)
+        "min_score": 8,                # ينشر فقط اللي يجيب تفاعل: درجة >= هذا الرقم (0 = ينشر كل شي). ارفعه لـ 9 لنشر أقل
+        "max_posts_per_day": 8,        # حد أعلى للمنشورات خلال 24 ساعة (0 = بدون حد). المنشورات الكبرى والتشكيلة والأهداف تتخطاه
+        "min_gap_minutes": 30,         # أقل فاصل بين منشورين (0 = بدون حد). المنشورات الكبرى والتشكيلة والأهداف تتخطاه
+        "always_post_score": 9,        # درجة >= هذا الرقم = خبر كبير ينشر دائماً حتى لو تجاوز الحد أو الفاصل (أكثر من خبر مهم بوقت قريب عادي)
+        "goal_max_age_minutes": 15,    # الهدف يفقد قيمته بسرعة: أقدم من هذا يُتخطى (0 = بدون حد)
+        "lineup_max_age_minutes": 90,  # التشكيلة تنشر قبل المباراة: أقدم من هذا يُتخطى (0 = بدون حد)
         "require_photo_and_text": True,   # ينشر فقط منشور فيه صورة + نص (لا نص وحده ولا صورة وحدها)
         # الضجيج الحي مرفوض قبل Gemini لتوفير الحصة. الأهداف والبطاقة الحمراء والتشكيلة والنتيجة تمر لـ Gemini (يقرر أهمية المباراة)
         "live_patterns": [r"نهاية\s+الشوط", r"بين\s+الشوطين", r"إحماء|احماء", r"خلف\s+الأهداف|خلف\s+الاهداف",
@@ -70,17 +75,15 @@ GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest"]   # لو خ�
 
 # نص يضاف بنهاية كل منشور + أول تعليق بعد النشر
 FOOTER = (
-    "----------------------\n"
-    "يمكنكم متابعة الاخبار لحظة بلحظة عبر قناتنا على التلكرام\n"
-    "رابط القناة في اول تعليق"
+    "📢 يمكنكم متابعة الأخبار لحظة بلحظة عبر قناتنا على التلكرام\n"
+    "🔗رابط القناة في اول تعليق"
 )
 FIRST_COMMENT = "تابعنا على التلكرام 👇\nhttps://t.me/FabriAr1"
 
 # إنستغرام ما يسمح برابط قابل للضغط بالتعليقات، فنقول الرابط بالبايو
 IG_FOOTER = (
-    "----------------------\n"
-    "يمكنكم متابعة الاخبار لحظة بلحظة عبر قناتنا على التلكرام\n"
-    "رابط القناة في البايو"
+    "📢 يمكنكم متابعة الأخبار لحظة بلحظة عبر قناتنا على التلكرام\n"
+    "🔗رابط القناة في البايو"
 )
 IG_MAX_TRIES = 8   # عدد محاولات إعادة النشر على إنستغرام قبل الاستسلام
 # تعليق إنستغرام (أول تعليق بكل منشور). يحتاج إذن instagram_manage_comments بالتوكن
@@ -366,13 +369,14 @@ SCORED_MODES = ("translate_ar", "engage_ar")
 
 
 def ai_process(raw, mode, gemini_key, min_score=0):
-    """يرجع (النص, سبب_التخطي, نوع_المنشور). النوع: lineup (تشكيلة قبل المباراة) أو goal (هدف سُجّل) أو None"""
+    """يرجع (النص, سبب_التخطي, نوع_المنشور, الدرجة). النوع: lineup (تشكيلة قبل المباراة) أو goal (هدف سُجّل) أو None"""
     kind = None
+    score = None
     if mode == "copy":
-        return raw, None, None
+        return raw, None, None, None
     out = strip_hashtags(gemini_generate(PROMPTS[mode] + raw, gemini_key))
     if out.upper().startswith("SKIP"):
-        return None, "ad", None
+        return None, "ad", None, None
     if mode in SCORED_MODES:
         first_line = out.split("\n", 1)[0]
         mk = re.search(r"(LINEUP|GOAL)\s*[:：]\s*YES", first_line, re.I)
@@ -386,22 +390,22 @@ def ai_process(raw, mode, gemini_key, min_score=0):
             out = out[m.end():].strip()
         out = re.sub(r"(?im)^\s*(LINEUP|GOAL)\s*[:：].*$\n?", "", out).strip()
         if out.upper().startswith("SKIP"):
-            return None, "ad", None
+            return None, "ad", None, None
         if mode == "translate_ar" and "here we go" in raw.lower():
             score = 10          # Here we go تُنشر دائماً
         if score is None and mode == "engage_ar":
-            return None, "no score", None   # بدون درجة ما نقدر نتأكد أنه مو كرة عربية: نتخطاه
+            return None, "no score", None, None   # بدون درجة ما نقدر نتأكد أنه مو كرة عربية: نتخطاه
         if score is not None:
             print(f"[score] {score} (min {min_score})")
             if score < min_score:
-                return None, f"low score {score}", None
+                return None, f"low score {score}", None, score
         if not out.strip():
-            return None, "empty", None
+            return None, "empty", None, None
         if mode == "translate_ar":
             out = enforce_here_we_go(raw, out)
     out = strip_fabrizio_attribution(out)
     if not out.strip():
-        return None, "empty", None
+        return None, "empty", None, None
     # التشكيلة والهدف فقط بمصدر engage_ar، ونتأكد بالكود أن النص فعلاً يخص النوع
     both = f"{raw} {out}"
     if mode != "engage_ar":
@@ -412,7 +416,7 @@ def ai_process(raw, mode, gemini_key, min_score=0):
         kind = None                        # نتيجة نهاية المباراة ليست منشور هدف
     if kind:
         print(f"[match] post kind: {kind}")
-    return out, None, kind
+    return out, None, kind, score
 
 
 # ============ فيسبوك ============
@@ -741,6 +745,39 @@ async def fetch_new(client, source, last_id):
     return group_messages(msgs), last_id
 
 
+def too_late_reason(cfg, kind, dates):
+    """الهدف والتشكيلة تفقد قيمتها كلما تأخر نشرها: لو المنشور أقدم من الحد نتخطاه"""
+    key = {"goal": "goal_max_age_minutes", "lineup": "lineup_max_age_minutes"}.get(kind)
+    limit = cfg.get(key, 0) if key else 0
+    if not limit or not dates:
+        return None
+    newest = max(dates)
+    if newest.tzinfo is None:
+        newest = newest.replace(tzinfo=timezone.utc)
+    age = (datetime.now(timezone.utc) - newest).total_seconds() / 60
+    if age > limit:
+        return f"{kind} too late ({int(age)}m > {limit}m)"
+    return None
+
+
+def rate_limit_reason(st, cfg, score, kind):
+    """نشر أقل وأهم: حد يومي وفاصل بين المنشورات. التشكيلة والأهداف والأخبار الكبرى (درجة عالية) تتخطاهم"""
+    now = time.time()
+    times = [t for t in st.get("post_times", []) if now - t < 86400]
+    st["post_times"] = times
+    if kind in ("lineup", "goal"):
+        return None
+    if score is not None and score >= cfg.get("always_post_score", 99):
+        return None
+    gap = cfg.get("min_gap_minutes", 0)
+    if gap and times and now - max(times) < gap * 60:
+        return f"too soon (min gap {gap}m)"
+    cap = cfg.get("max_posts_per_day", 0)
+    if cap and len(times) >= cap:
+        return f"daily cap {cap}"
+    return None
+
+
 async def run_page(client, key, cfg, state, gemini_key):
     page_id = need(cfg["page_id_env"])
     token = need(cfg["token_env"])
@@ -843,7 +880,7 @@ async def run_page(client, key, cfg, state, gemini_key):
         match_kind = None
         if raw:
             try:
-                text, skip_reason, match_kind = ai_process(raw, cfg["mode"], gemini_key, cfg.get("min_score", 0))
+                text, skip_reason, match_kind, ai_score = ai_process(raw, cfg["mode"], gemini_key, cfg.get("min_score", 0))
             except Exception:
                 st["cooldown_until"] = time.time() + COOLDOWN_SECONDS
                 save_state(state)
@@ -851,6 +888,12 @@ async def run_page(client, key, cfg, state, gemini_key):
                 raise
             if text is None:
                 done(f"[SKIP {skip_reason}]"); continue
+            late = too_late_reason(cfg, match_kind, [m.date for m in grp if getattr(m, "date", None)])
+            if late:
+                done(f"[SKIP {late}]"); continue
+            limit_reason = rate_limit_reason(st, cfg, ai_score, match_kind)
+            if limit_reason:
+                done(f"[SKIP {limit_reason}]"); continue
 
         images = []
         for m, k in zip(grp, kinds):
@@ -890,6 +933,7 @@ async def run_page(client, key, cfg, state, gemini_key):
         if raw:
             st["hashes"] = (st["hashes"] + [h(raw)])[-100:]
             st["recent_raw"] = (st.get("recent_raw", []) + [norm_text(raw)])[-40:]
+        st.setdefault("post_times", []).append(time.time())
         done("[OK]")
         git_persist_state()
 
