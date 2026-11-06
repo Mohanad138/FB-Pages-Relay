@@ -17,85 +17,71 @@ from telethon.tl.types import MessageMediaWebPage, MessageMediaPhoto
 
 try:
     from PIL import Image
-except Exception:   # لو pillow غير مثبتة، إنستغرام يستخدم الصورة كما هي
+except Exception:
     Image = None
 
 # ============ الإعدادات ============
-# المفتاح الداخلي (مثل "omar") يتتبع حالة النشر. لو غيّرت المصدر غيّر المفتاح.
-# لإضافة صفحة ثانية: انسخ كتلة وغيّر المصدر وأسماء الأسرار (FB_PAGE_ID_2 ...).
 PAGES = {
-    # المصدر: حساب إنستغرام (عبر Business Discovery الرسمي). الحساب لازم يكون Business أو Creator وعام
     "omar": {
-        "enabled": False,              # معطّل: مصدر إنستغرام (عمر قحطان). فعّله True لو رجعت له
+        "enabled": False,
         "source_type": "instagram",
         "source_username": "omarqahtan87",
         "page_id_env": "FB_PAGE_ID_1",
         "token_env": "FB_PAGE_TOKEN_1",
-        "max_age_minutes": 360,        # يتخطى الأقدم من 6 ساعات (حتى لا ينشر قديم بعد انقطاع). 0 = بدون حد
-        "skip_videos": True,           # الفيديو والريلز مرفوضة
-        "arab_filter": True,           # يرفض أخبار الكرة العربية (إلا اللاعب/الشخصية المشهورة عالمياً)
-        "instagram": True,             # ينشر أيضاً على إنستغرام الخاص بك
+        "max_age_minutes": 360,
+        "skip_videos": True,
+        "arab_filter": True,
+        "instagram": True,
     },
     "offside": {
-        "enabled": True,               # مفعّل: مصدر تلكرام أوفسايد
-        "source": "Offsideahdaff",             # يوزرنيم القناة العامة بدون @
+        "enabled": True,
+        "source": "Offsideahdaff",
         "page_id_env": "FB_PAGE_ID_1",
         "token_env": "FB_PAGE_TOKEN_1",
-        "mode": "engage_ar",                   # engage_ar | translate_ar | rephrase_ar | copy
+        "mode": "engage_ar",
         "skip_podcast": False,
-        "skip_rt": True,               # يتخطى الريتويت (RT @...)
-        "skip_preview_video": True,    # يتخطى معاينات الفيديو
-        "min_letters": 15,             # يتخطى منشورات المعاينة اللي نصها فاضي تقريباً
-        "max_age_minutes": 180,        # يتخطى الأقدم من 3 ساعات. 0 = بدون حد
-        "min_score": 8,                # ينشر فقط اللي يجيب تفاعل: درجة >= هذا الرقم (0 = ينشر كل شي). ارفعه لـ 9 لنشر أقل
-        "max_posts_per_day": 8,        # حد أعلى للمنشورات خلال 24 ساعة (0 = بدون حد). المنشورات الكبرى والتشكيلة والأهداف تتخطاه
-        "min_gap_minutes": 30,         # أقل فاصل بين منشورين (0 = بدون حد). المنشورات الكبرى والتشكيلة والأهداف تتخطاه
-        "always_post_score": 9,        # درجة >= هذا الرقم = خبر كبير ينشر دائماً حتى لو تجاوز الحد أو الفاصل (أكثر من خبر مهم بوقت قريب عادي)
-        "goal_max_age_minutes": 15,    # الهدف يفقد قيمته بسرعة: أقدم من هذا يُتخطى (0 = بدون حد)
-        "lineup_max_age_minutes": 90,  # التشكيلة تنشر قبل المباراة: أقدم من هذا يُتخطى (0 = بدون حد)
-        "require_photo_and_text": True,   # ينشر فقط منشور فيه صورة + نص (لا نص وحده ولا صورة وحدها)
-        # الضجيج الحي مرفوض قبل Gemini لتوفير الحصة. الأهداف والبطاقة الحمراء والتشكيلة والنتيجة تمر لـ Gemini (يقرر أهمية المباراة)
+        "skip_rt": True,
+        "skip_preview_video": True,
+        "min_letters": 15,
+        "max_age_minutes": 180,
+        "min_score": 8,                # ينشر كل خبر درجته >= 8 (تفاعل عالي فقط)
+        "goal_max_age_minutes": 15,
+        "lineup_max_age_minutes": 90,
+        "require_photo_and_text": True,
         "live_patterns": [r"نهاية\s+الشوط", r"بين\s+الشوطين", r"إحماء|احماء", r"خلف\s+الأهداف|خلف\s+الاهداف",
                           r"\bhalf[\s-]?time\b", r"\bwarm[\s-]?up\b"],
-        # نصوص قصيرة جداً فيها أسيست/تبديل/بطاقة صفراء = تفاصيل حية غير مهمة (الهدف والبطاقة الحمراء ليسا هنا عمداً)
         "live_short_patterns": [r"أسيست|اسيست|تبديل|بطاقة\s+صفراء|إنذار|انذار"],
         "live_short_max_len": 70,
-        "instagram": True,             # ينشر نفس المنشور على إنستغرام (لو الحساب Professional ومربوط بالصفحة)
+        "instagram": True,
     },
 }
 
-VERSION = "2026-10-17-v11"
+VERSION = "2026-11-06-v12"
 STATE_FILE = "state.json"
 FIRST_RUN_COUNT = 5
-COOLDOWN_SECONDS = 600   # بعد فشل Gemini: استراحة 10 دقائق قبل المحاولة التالية
+COOLDOWN_SECONDS = 600
 FETCH_LIMIT = 40
 GRAPH = "https://graph.facebook.com/v21.0"
-# الأرخص أولاً (الترجمة بسيطة). لو انتهت حصته أو ما توفر ينتقل للي بعده (لكل موديل حصة مستقلة)
-GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest"]   # لو خلصت حصتهم يكتشف البوت موديلات ثانية متاحة بمفتاحك تلقائياً
+GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest"]
 
-# نص يضاف بنهاية كل منشور + أول تعليق بعد النشر
 FOOTER = (
     "📢 يمكنكم متابعة الأخبار لحظة بلحظة عبر قناتنا على التلكرام\n"
     "🔗رابط القناة في اول تعليق"
 )
 FIRST_COMMENT = "تابعنا على التلكرام 👇\nhttps://t.me/FabriAr1"
 
-# إنستغرام ما يسمح برابط قابل للضغط بالتعليقات، فنقول الرابط بالبايو
 IG_FOOTER = (
     "📢 يمكنكم متابعة الأخبار لحظة بلحظة عبر قناتنا على التلكرام\n"
     "🔗رابط القناة في البايو"
 )
-IG_MAX_TRIES = 8   # عدد محاولات إعادة النشر على إنستغرام قبل الاستسلام
-# تعليق إنستغرام (أول تعليق بكل منشور). يحتاج إذن instagram_manage_comments بالتوكن
+IG_MAX_TRIES = 3
 IG_COMMENT = "تابعنا على التلكرام\nرابط القناة في البايو"
 
-# منشورات التشكيلة (قبل المباراة): فيسبوك فقط. إنستغرام يبقى بالفوتر العادي بدون تعليق
 LINEUP_FOOTER = (
     "----------------------\n"
     "رابط مشاهدة المباراة في اول تعليق"
 )
 LINEUP_COMMENT = "رابط مشاهدة المباراة 👇\nhttps://t.me/FabriAr2/132"
-# منشورات الهدف (هدف سُجّل بالمباراة): فيسبوك فقط. إنستغرام يبقى كما هو
 GOAL_FOOTER = (
     "----------------------\n"
     "شاهد الهدف في اول تعليق"
@@ -166,7 +152,7 @@ PROMPTS = {
 def need(name):
     v = os.environ.get(name, "").strip()
     if not v:
-        print(f"[ERROR] secret missing or empty: {name} — check the exact name in Settings > Secrets and the env block in run.yml")
+        print(f"[ERROR] secret missing or empty: {name}")
         sys.exit(1)
     return v
 
@@ -193,7 +179,6 @@ def _words(t):
 
 
 def is_near_duplicate(raw, recent, threshold=0.82):
-    """نفس الخبر انكتب مرتين بصياغة قريبة. نتطلب تشابه النص + تطابق الكلمات (يفرّق بين خبرين بنفس القالب وأسماء مختلفة)"""
     a = norm_text(raw)
     if not a:
         return False
@@ -210,11 +195,10 @@ def is_near_duplicate(raw, recent, threshold=0.82):
 
 
 def h(text):
-    # نحسب الهاش على نص المصدر الخام وليس على ناتج الذكاء الاصطناعي
     return hashlib.sha1(text.strip().encode()).hexdigest()
 
 
-# ============ التنظيف على مستوى الكود ============
+# ============ التنظيف ============
 def strip_hashtags(t):
     t = re.sub(r"(?<!\S)#[^\s#]+", "", t or "")
     t = re.sub(r"[ \t]+\n", "\n", t)
@@ -225,7 +209,6 @@ def strip_hashtags(t):
 
 def clean_text(text, source):
     t = text or ""
-    # توقيع التغريدة: "— Fabrizio Romano (@FabrizioRomano)" + سطر التاريخ
     t = re.sub(r"[—–-]\s*Fabrizio Romano\s*\(@FabrizioRomano\)\s*(?:[A-Z][a-z]{2,8}\.? \d{1,2}, \d{4})?", "", t)
     t = re.sub(r"https?://t\.co/\S+", "", t)
     t = re.sub(r"https?://(www\.)?(t\.me|telegram\.me)/\S+", "", t)
@@ -259,7 +242,6 @@ def is_podcast_promo(text):
 
 
 def enforce_here_we_go(raw, out):
-    # القاعدة تنفذ بالكود: "هير وي كو" فقط لو النص الأصلي فيه Here We Go حرفياً
     has = "here we go" in raw.lower()
     out = re.sub(r"^\s*هير\s*وي\s*(كو|غو)\s*", "", out)
     if has:
@@ -273,11 +255,8 @@ _FAB_VERB = (r"(?:يؤكد|يُؤكد|يقول|يكشف|يُعلن|يعلن|يف
 
 
 def strip_fabrizio_attribution(t):
-    """النشر بصيغة المصدر نفسه: نحذف نسبة الخبر لفابريزيو رومانو (يؤكد، يقول، وفقاً لـ...) بالكود حتى لو أخطأ Gemini"""
     t = t or ""
-    # بداية السطر: "🚨 فابريزيو رومانو يؤكد:" -> نحتفظ بالإيموجي فقط
     t = re.sub(rf"(?m)^([^\w\n]*?)\s*{_FAB_NAME}\s+{_FAB_VERB}\s*[:：،,\-–—]?\s*", r"\1 ", t)
-    # "وفقاً لـ فابريزيو رومانو" / "بحسب فابريزيو رومانو" / "نقلاً عن فابريزيو رومانو"
     t = re.sub(rf"(?:نقلاً\s+عن|نقلا\s+عن|وفقاً\s+لـ?|وفقا\s+لـ?|بحسب|حسب)\s*{_FAB_NAME}\s*[:：،,]?\s*", "", t)
     t = re.sub(r"(?m)^[ \t]+", "", t)
     t = re.sub(r"[ \t]{2,}", " ", t)
@@ -287,7 +266,6 @@ def strip_fabrizio_attribution(t):
 
 # ============ Gemini ============
 def discover_models(gemini_key):
-    """يجلب الموديلات المتاحة بمفتاحك (لكل موديل حصة يومية مستقلة)"""
     try:
         r = requests.get("https://generativelanguage.googleapis.com/v1beta/models",
                          params={"key": gemini_key, "pageSize": 1000}, timeout=30)
@@ -344,14 +322,13 @@ def gemini_generate(prompt, gemini_key):
                     raise RuntimeError(f"Gemini returned no text ({model}): {str(data)[:300]}")
             last = f"{model} -> {code}: {r.text[:200]}"
             print(f"[gemini] {last}")
-            # 503 (ضغط مؤقت) أو 429 بسبب الدقيقة: ننتظر ونعيد على نفس الموديل
             transient = code == 503 or (code == 429 and "PerDay" not in r.text)
             if transient and attempt < 2:
-                time.sleep(8 * (attempt + 1))   # 8 ثواني ثم 16
+                time.sleep(8 * (attempt + 1))
                 continue
-            break   # حصة اليوم خلصت أو الموديل غير متوفر: ننتقل للموديل التالي
+            break
         if code not in (429, 404, 500, 503):
-            break   # خطأ غريب (مثل 400): ما ننتقل لموديل ثاني
+            break
         if not queue and not discovered:
             discovered = True
             queue.extend(discover_models(gemini_key))
@@ -369,7 +346,6 @@ SCORED_MODES = ("translate_ar", "engage_ar")
 
 
 def ai_process(raw, mode, gemini_key, min_score=0):
-    """يرجع (النص, سبب_التخطي, نوع_المنشور, الدرجة). النوع: lineup (تشكيلة قبل المباراة) أو goal (هدف سُجّل) أو None"""
     kind = None
     score = None
     if mode == "copy":
@@ -381,7 +357,7 @@ def ai_process(raw, mode, gemini_key, min_score=0):
         first_line = out.split("\n", 1)[0]
         mk = re.search(r"(LINEUP|GOAL)\s*[:：]\s*YES", first_line, re.I)
         if mk:
-            kind = mk.group(1).lower()        # لو كتبها Gemini بنفس سطر الدرجة
+            kind = mk.group(1).lower()
         score, out = parse_score(out)
         m = FLAG_LINE_RE.match(out)
         if m:
@@ -392,9 +368,9 @@ def ai_process(raw, mode, gemini_key, min_score=0):
         if out.upper().startswith("SKIP"):
             return None, "ad", None, None
         if mode == "translate_ar" and "here we go" in raw.lower():
-            score = 10          # Here we go تُنشر دائماً
+            score = 10
         if score is None and mode == "engage_ar":
-            return None, "no score", None, None   # بدون درجة ما نقدر نتأكد أنه مو كرة عربية: نتخطاه
+            return None, "no score", None, None
         if score is not None:
             print(f"[score] {score} (min {min_score})")
             if score < min_score:
@@ -406,14 +382,13 @@ def ai_process(raw, mode, gemini_key, min_score=0):
     out = strip_fabrizio_attribution(out)
     if not out.strip():
         return None, "empty", None, None
-    # التشكيلة والهدف فقط بمصدر engage_ar، ونتأكد بالكود أن النص فعلاً يخص النوع
     both = f"{raw} {out}"
     if mode != "engage_ar":
         kind = None
     elif kind == "lineup" and not LINEUP_WORDS_RE.search(both):
         kind = None
     elif kind == "goal" and (not GOAL_WORDS_RE.search(both) or FINAL_WORDS_RE.search(both)):
-        kind = None                        # نتيجة نهاية المباراة ليست منشور هدف
+        kind = None
     if kind:
         print(f"[match] post kind: {kind}")
     return out, None, kind, score
@@ -428,7 +403,7 @@ def fb_check(r):
     if r.status_code != 200 or "error" in body:
         err = body.get("error", {})
         if err.get("code") == 190:
-            raise RuntimeError("Facebook token invalid/expired (code 190) — generate a new Page token")
+            raise RuntimeError("Facebook token invalid/expired (code 190)")
         raise RuntimeError(f"Facebook error {r.status_code}: {body}")
     return body
 
@@ -442,7 +417,6 @@ def fb_post(page_id, token, text, images):
         if text:
             data["message"] = text
         return fb_check(requests.post(f"{base}/photos", data=data, files={"source": ("img.jpg", images[0])}, timeout=120))
-    # ألبوم: ننشر كل صورة غير منشورة ثم منشور واحد يجمعها
     ids = []
     for img in images[:10]:
         b = fb_check(requests.post(
@@ -466,7 +440,6 @@ def fb_comment(token, post_id, message):
 
 
 def git_persist_state():
-    """يحفظ state.json بالريبو فوراً (يُستدعى بعد كل منشور) حتى لا يضيع التقدم فيتكرر النشر."""
     if not os.environ.get("GITHUB_ACTIONS"):
         return True
 
@@ -477,12 +450,11 @@ def git_persist_state():
     sh("git", "config", "user.email", "bot@users.noreply.github.com")
     sh("git", "add", STATE_FILE)
     if sh("git", "diff", "--cached", "--quiet").returncode == 0:
-        return True   # ما تغير شي
+        return True
     sh("git", "commit", "-m", "update state")
     for i in range(5):
         if sh("git", "push").returncode == 0:
             return True
-        # تعارض: نفضّل نسختنا من state.json (الأحدث)
         r = sh("git", "pull", "--rebase", "-X", "theirs", "origin", "main")
         if r.returncode != 0:
             sh("git", "rebase", "--abort")
@@ -492,8 +464,36 @@ def git_persist_state():
 
 
 # ============ إنستغرام ============
+IG_LOCK_CODES = {9, 9007}
+IG_LOCK_SUBCODES = {2207027, 2207042, 2207069}
+
+
+def ig_is_lock_error(exc):
+    """True لو الخطأ قفل حساب (مو مؤقت): ما نضيفه لـ pending"""
+    s = str(exc)
+    for c in IG_LOCK_CODES:
+        if f"'code': {c}" in s or f'"code": {c}' in s:
+            return True
+    for sc in IG_LOCK_SUBCODES:
+        if f"'error_subcode': {sc}" in s or f'"error_subcode": {sc}' in s:
+            return True
+    return False
+
+
+def ig_quota(ig_id, token):
+    """(usage, total) أو None لو فشل الاستعلام"""
+    try:
+        b = fb_check(requests.get(
+            f"{GRAPH}/{ig_id}/content_publishing_limit",
+            params={"fields": "quota_usage,config", "access_token": token}, timeout=30))
+        d = (b.get("data") or [{}])[0]
+        return int(d.get("quota_usage", 0)), int((d.get("config") or {}).get("quota_total", 100))
+    except Exception as e:
+        print(f"[IG] quota check failed: {str(e)[:150]}")
+        return None
+
+
 def fit_for_instagram(data):
-    """JPEG وبنسبة أبعاد مقبولة (4:5 إلى 1.91:1) وعرض كافي"""
     if Image is None:
         return data
     try:
@@ -505,12 +505,12 @@ def fit_for_instagram(data):
         im = im.resize((640, max(1, int(h * 640 / w))), Image.LANCZOS)
         w, h = im.size
     ratio = w / h
-    if ratio < 0.8:        # طويلة: نوسّع الجوانب
+    if ratio < 0.8:
         new_w = math.ceil(h * 0.8)
         canvas = Image.new("RGB", (new_w, h), (20, 20, 20))
         canvas.paste(im, ((new_w - w) // 2, 0))
         im = canvas
-    elif ratio > 1.91:     # عريضة: نوسّع الأعلى والأسفل
+    elif ratio > 1.91:
         new_h = math.ceil(w / 1.91)
         canvas = Image.new("RGB", (w, new_h), (20, 20, 20))
         canvas.paste(im, (0, (new_h - h) // 2))
@@ -521,7 +521,6 @@ def fit_for_instagram(data):
 
 
 def fb_host_image(page_id, token, data):
-    """إنستغرام يريد رابط عام للصورة: نرفعها لفيسبوك غير منشورة ونأخذ رابطها"""
     b = fb_check(requests.post(
         f"{GRAPH}/{page_id}/photos",
         data={"access_token": token, "published": "false"},
@@ -582,7 +581,7 @@ def ig_post(ig_id, token, caption, image_urls):
 
 
 def ig_comment(token, media_id, message):
-    """تعليق على منشور إنستغرام. لا يرمي خطأ أبداً: لو فشل ما نفشل المنشور (وإلا يُنشر مرتين)"""
+    """تعليق على منشور إنستغرام. لا يرمي خطأ أبداً."""
     if not media_id:
         print("[IG] WARNING comment skipped: no media id returned")
         return False
@@ -595,36 +594,46 @@ def ig_comment(token, media_id, message):
             if attempt == 0:
                 time.sleep(5)
                 continue
-            print(f"[IG] WARNING comment failed for {media_id}: {str(e)[:200]} "
-                  f"(تأكد أن التوكن فيه instagram_manage_comments)")
+            print(f"[IG] WARNING comment failed for {media_id}: {str(e)[:200]}")
     return False
 
 
 def ig_retry_pending(key, st, state, ig_id, token):
-    """إعادة محاولة منشورات إنستغرام اللي فشلت سابقاً (فيسبوك نُشر، إنستغرام لا)"""
+    """إعادة محاولة منشورات إنستغرام اللي فشل نشرها نفسه (مو اللي نُشر وفشل تعليقه)."""
+    pending = st.get("ig_pending", [])
+    if not pending:
+        return
+    q = ig_quota(ig_id, token)
+    if q and q[0] >= q[1]:
+        print(f"[{key}] [IG retry skipped: quota full {q[0]}/{q[1]}]")
+        return
     keep = []
-    for item in st.get("ig_pending", []):
-        if time.time() - item.get("ts", 0) > 86400 or item.get("tries", 0) >= IG_MAX_TRIES:
-            print(f"[{key}] [IG GIVE UP] {item.get('id')} after {item.get('tries')} tries")
+    for item in pending:
+        age = time.time() - item.get("ts", 0)
+        # URLs من FB CDN تنتهي عادة في ساعة
+        if age > 3600 or item.get("tries", 0) >= IG_MAX_TRIES:
+            print(f"[{key}] [IG GIVE UP age={int(age)}s tries={item.get('tries')}] {item.get('id')}")
             continue
         try:
             res = ig_post(ig_id, token, item["caption"], item["urls"])
-            ig_comment(token, (res or {}).get("id"), IG_COMMENT)
             print(f"[{key}] [IG OK retry] {item['id']}")
+            ig_comment(token, (res or {}).get("id"), IG_COMMENT)
         except Exception as e:
+            if ig_is_lock_error(e):
+                print(f"[{key}] [IG retry dropped, account locked] {item['id']}: {str(e)[:150]}")
+                continue
             item["tries"] = item.get("tries", 0) + 1
             keep.append(item)
-            print(f"[{key}] [IG retry failed {item['tries']}/{IG_MAX_TRIES}] {item['id']}: {str(e)[:200]}")
+            print(f"[{key}] [IG retry failed {item['tries']}/{IG_MAX_TRIES}] {item['id']}: {str(e)[:150]}")
     st["ig_pending"] = keep
     save_state(state)
 
 
-# ============ سجل النشر في Saved Messages (يمنع التكرار حتى لو فشل state.json) ============
+# ============ سجل النشر ============
 LEDGER_LIMIT = 500
 
 
 async def ledger_load(client):
-    """يقرأ علامات FBRELAY| من رسائلك المحفوظة. يرجع None لو فشلت القراءة"""
     try:
         out = set()
         async for m in client.iter_messages("me", limit=LEDGER_LIMIT):
@@ -642,12 +651,11 @@ async def ledger_add(client, marker):
 
 
 RUN_TAG = f"{os.environ.get('GITHUB_RUN_ID', 'local')}-{os.getpid()}"
-CLAIM_WAIT = 2.0     # ثواني ننتظر فيها لو تشغيلة ثانية تحجز نفس الخبر بنفس اللحظة
-CLAIM_TTL = 600      # حجز أقدم من 10 دقائق بدون نشر يُعتبر ميت (تشغيلة انهارت)
+CLAIM_WAIT = 2.0
+CLAIM_TTL = 600
 
 
 async def ledger_scan(client, limit=150):
-    """آخر العلامات بسجل Saved Messages: [(id, text, date)] أو None لو فشلت القراءة"""
     try:
         out = []
         async for m in client.iter_messages("me", limit=limit):
@@ -661,16 +669,12 @@ async def ledger_scan(client, limit=150):
 
 
 async def claim_item(client, key, top):
-    """
-    قفل بين التشغيلات المتزامنة: كل تشغيلة تكتب «حجز» للخبر بـ Saved Messages ثم تقرأ.
-    الفائز هو صاحب أصغر رقم رسالة (ترتيب تيليجرام ثابت للكل). يرجع (نجح, رقم_رسالة_الحجز)
-    """
     prefix = f"FBRELAY|{key}|{top}|"
     snap = await ledger_scan(client)
     if snap is None:
-        return True, None            # ما قدرنا نفحص: نكمل (الحماية الباقية تشتغل)
+        return True, None
     if any(t == prefix + "FB" for _, t, _ in snap):
-        return False, None           # منشور مسبقاً
+        return False, None
     try:
         sent = await client.send_message("me", prefix + "CLAIM|" + RUN_TAG)
     except Exception as e:
@@ -691,7 +695,7 @@ async def claim_item(client, key, top):
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=timezone.utc)
                 if (now - dt).total_seconds() > CLAIM_TTL and mid != sent.id:
-                    continue         # حجز ميت
+                    continue
             claims.append(mid)
     if not claims or min(claims) == sent.id:
         return True, sent.id
@@ -710,13 +714,12 @@ async def release_claim(client, claim_id):
 
 # ============ تيليجرام ============
 def classify(m):
-    """photo | text | skip"""
     if m.video or m.gif or m.document or m.audio or m.voice or m.video_note or m.sticker:
-        return "skip"          # فيديو، ملفات، ومعاينات فيديو X
+        return "skip"
     if m.photo:
         return "photo"
     if m.media is not None and m.web_preview is None:
-        return "skip"          # استفتاء أو شي غريب
+        return "skip"
     return "text"
 
 
@@ -736,7 +739,6 @@ def group_messages(msgs):
 
 async def fetch_new(client, source, last_id):
     if last_id is None:
-        # أول تشغيل: آخر 5 فقط
         latest = [m async for m in client.iter_messages(source, limit=FIRST_RUN_COUNT)]
         if not latest:
             return [], 0
@@ -746,7 +748,6 @@ async def fetch_new(client, source, last_id):
 
 
 def too_late_reason(cfg, kind, dates):
-    """الهدف والتشكيلة تفقد قيمتها كلما تأخر نشرها: لو المنشور أقدم من الحد نتخطاه"""
     key = {"goal": "goal_max_age_minutes", "lineup": "lineup_max_age_minutes"}.get(kind)
     limit = cfg.get(key, 0) if key else 0
     if not limit or not dates:
@@ -757,24 +758,6 @@ def too_late_reason(cfg, kind, dates):
     age = (datetime.now(timezone.utc) - newest).total_seconds() / 60
     if age > limit:
         return f"{kind} too late ({int(age)}m > {limit}m)"
-    return None
-
-
-def rate_limit_reason(st, cfg, score, kind):
-    """نشر أقل وأهم: حد يومي وفاصل بين المنشورات. التشكيلة والأهداف والأخبار الكبرى (درجة عالية) تتخطاهم"""
-    now = time.time()
-    times = [t for t in st.get("post_times", []) if now - t < 86400]
-    st["post_times"] = times
-    if kind in ("lineup", "goal"):
-        return None
-    if score is not None and score >= cfg.get("always_post_score", 99):
-        return None
-    gap = cfg.get("min_gap_minutes", 0)
-    if gap and times and now - max(times) < gap * 60:
-        return f"too soon (min gap {gap}m)"
-    cap = cfg.get("max_posts_per_day", 0)
-    if cap and len(times) >= cap:
-        return f"daily cap {cap}"
     return None
 
 
@@ -792,7 +775,7 @@ async def run_page(client, key, cfg, state, gemini_key):
             if ig_id:
                 st["ig_user_id"] = ig_id
         if not ig_id:
-            print(f"[{key}] [IG] disabled: no linked Instagram professional account found (or token lacks instagram_basic)")
+            print(f"[{key}] [IG] disabled: no linked Instagram professional account found")
         else:
             print(f"[{key}] [IG] enabled (account {ig_id})")
             if st.get("ig_pending"):
@@ -808,13 +791,13 @@ async def run_page(client, key, cfg, state, gemini_key):
         st["last_id"] = last_id
     print(f"[{key}] {len(items)} new items")
 
-    ledger, ledger_ok = set(), False
+    ledger = set()
     if items:
         loaded = await ledger_load(client)
         if loaded is not None:
-            ledger, ledger_ok = loaded, True
+            ledger = loaded
         else:
-            print(f"[{key}] WARNING: could not read the Saved Messages ledger; relying on state.json only")
+            print(f"[{key}] WARNING: could not read the Saved Messages ledger")
 
     for grp in items:
         top = max(m.id for m in grp)
@@ -824,8 +807,6 @@ async def run_page(client, key, cfg, state, gemini_key):
         has_photo = any(k == "photo" for k in kinds)
         wp = next((m.media.webpage for m in grp if isinstance(m.media, MessageMediaWebPage)), None)
         is_preview = wp is not None and not any(isinstance(m.media, MessageMediaPhoto) for m in grp)
-        if wp is not None:
-            print(f"[{key}] preview info id={top} type={getattr(wp, 'type', None)} duration={getattr(wp, 'duration', None)} embed={bool(getattr(wp, 'embed_url', None))}")
 
         def done(why):
             print(f"[{key}] {why} {top}")
@@ -870,7 +851,6 @@ async def run_page(client, key, cfg, state, gemini_key):
         if raw and is_near_duplicate(raw, st.get("recent_raw", [])):
             done("[SKIP near-duplicate]"); continue
 
-        # حجز الخبر: لو تشغيلة ثانية تشتغل بنفس اللحظة ما ننشر نفس الخبر مرتين
         ok_claim, claim_id = await claim_item(client, key, top)
         if not ok_claim:
             print(f"[{key}] [SKIP: already posted or claimed by another run] {top}")
@@ -891,9 +871,7 @@ async def run_page(client, key, cfg, state, gemini_key):
             late = too_late_reason(cfg, match_kind, [m.date for m in grp if getattr(m, "date", None)])
             if late:
                 done(f"[SKIP {late}]"); continue
-            limit_reason = rate_limit_reason(st, cfg, ai_score, match_kind)
-            if limit_reason:
-                done(f"[SKIP {limit_reason}]"); continue
+            # ملاحظة: لا يوجد فاصل زمني ولا حد يومي — كل خبر درجته >= min_score ينشر فوراً
 
         images = []
         for m, k in zip(grp, kinds):
@@ -905,8 +883,7 @@ async def run_page(client, key, cfg, state, gemini_key):
         if not text and not images:
             done("[SKIP nothing to post]"); continue
 
-        body = text                                   # النص بدون فوتر (لإنستغرام)
-        # فيسبوك فقط: التشكيلة والهدف لهم فوتر وتعليق خاص. إنستغرام يبقى بالفوتر العادي
+        body = text
         if match_kind == "lineup":
             fb_footer, fb_comment_text = LINEUP_FOOTER, LINEUP_COMMENT
         elif match_kind == "goal":
@@ -916,57 +893,66 @@ async def run_page(client, key, cfg, state, gemini_key):
         text = f"{text}\n\n{fb_footer}" if text else fb_footer
 
         try:
-            res = fb_post(page_id, token, text, images)   # يرمي خطأ لو فشل فلا تتقدم الحالة
+            res = fb_post(page_id, token, text, images)
         except Exception:
-            await release_claim(client, claim_id)         # ما اننشر: نحرر الحجز ليُعاد لاحقاً
+            await release_claim(client, claim_id)
             raise
         post_id = res.get("post_id") or res.get("id")
 
-        # نسجّل النشر فوراً بسجل تلكرام (أقوى حماية من التكرار)
         try:
             await ledger_add(client, fb_marker)
             ledger.add(fb_marker)
         except Exception as e:
             print(f"[{key}] WARNING ledger write failed: {e}")
 
-        # نحفظ التقدم فوراً (قبل التعليق وإنستغرام) حتى لا يتكرر النشر لو صار أي خلل بعدها
         if raw:
             st["hashes"] = (st["hashes"] + [h(raw)])[-100:]
             st["recent_raw"] = (st.get("recent_raw", []) + [norm_text(raw)])[-40:]
-        st.setdefault("post_times", []).append(time.time())
         done("[OK]")
         git_persist_state()
 
-        # التعليق الأول: لو فشل لا نفشل المنشور (وإلا ينشر مرة ثانية)
         try:
             fb_comment(token, post_id, fb_comment_text)
         except Exception as e:
             print(f"[{key}] WARNING comment failed for {post_id}: {e}")
 
-        # إنستغرام: يحتاج صورة دائماً. لو فشل نحفظه بقائمة الانتظار ويُعاد لاحقاً
+        # إنستغرام: نشر منفصل عن التعليق
         if ig_id:
             if ig_marker in ledger:
                 print(f"[{key}] [IG skip: already posted] {top}")
             elif not images:
                 print(f"[{key}] [IG skip: no image] {top}")
             else:
-                caption = f"{body}\n\n{IG_FOOTER}" if body else IG_FOOTER
-                urls = None
-                try:
-                    urls = [fb_host_image(page_id, token, fit_for_instagram(b)) for b in images[:10]]
-                    res_ig = ig_post(ig_id, token, caption, urls)
-                    ig_comment(token, (res_ig or {}).get("id"), IG_COMMENT)
-                    print(f"[{key}] [IG OK] {top}")
+                q = ig_quota(ig_id, token)
+                if q and q[0] >= q[1]:
+                    print(f"[{key}] [IG skip: quota full {q[0]}/{q[1]}] {top}")
+                else:
+                    caption = f"{body}\n\n{IG_FOOTER}" if body else IG_FOOTER
+                    urls = None
+                    res_ig = None
+                    # 1) النشر على إنستغرام
                     try:
-                        await ledger_add(client, ig_marker)
-                        ledger.add(ig_marker)
+                        urls = [fb_host_image(page_id, token, fit_for_instagram(b)) for b in images[:10]]
+                        res_ig = ig_post(ig_id, token, caption, urls)
+                        print(f"[{key}] [IG OK] {top}")
+                        try:
+                            await ledger_add(client, ig_marker)
+                            ledger.add(ig_marker)
+                        except Exception as e:
+                            print(f"[{key}] WARNING ledger write failed (IG): {e}")
                     except Exception as e:
-                        print(f"[{key}] WARNING ledger write failed (IG): {e}")
-                except Exception as e:
-                    print(f"[{key}] [IG FAILED -> will retry] {top}: {str(e)[:200]}")
-                    if urls:   # الصور رُفعت لكن النشر فشل: نعيد المحاولة لاحقاً بنفس الروابط
-                        st.setdefault("ig_pending", []).append(
-                            {"id": top, "caption": caption[:2200], "urls": urls, "tries": 1, "ts": int(time.time())})
+                        if ig_is_lock_error(e):
+                            print(f"[{key}] [IG skipped, account locked] {top}: {str(e)[:150]}")
+                        else:
+                            print(f"[{key}] [IG publish failed -> retry later] {top}: {str(e)[:200]}")
+                            if urls:
+                                st.setdefault("ig_pending", []).append({
+                                    "id": top, "caption": caption[:2200], "urls": urls,
+                                    "tries": 1, "ts": int(time.time())
+                                })
+                    # 2) التعليق: منفصل تماماً
+                    if res_ig:
+                        ig_comment(token, res_ig.get("id"), IG_COMMENT)
         save_state(state)
         git_persist_state()
 
@@ -991,9 +977,8 @@ ARAB_CHECK_PROMPT = """هل هذا المنشور يخص كرة القدم ال�
 
 
 def format_paragraphs(text):
-    """يدمج الأسطر المقطوعة بفارزة بفقرة واحدة، ويبقي الفراغ بعد الجمل المنتهية بنقطة أو ! أو ? أو :"""
     t = (text or "").replace("\r\n", "\n").replace("\r", "\n")
-    t = re.sub(r"[\u200e\u200f\u202a-\u202e\u2066-\u2069]", "", t)   # علامات اتجاه الكتابة
+    t = re.sub(r"[\u200e\u200f\u202a-\u202e\u2066-\u2069]", "", t)
     out, prev, blank_before = "", None, False
     for line in (ln.strip() for ln in t.split("\n")):
         if not line:
@@ -1002,9 +987,9 @@ def format_paragraphs(text):
         if prev is None:
             out = line
         elif re.search(r"[،,]\s*$", prev):
-            out += " " + line                                   # الجملة مكملة: ندمج
+            out += " " + line
         else:
-            out += ("\n\n" if blank_before else "\n") + line    # جملة منتهية: نبقي الفراغ
+            out += ("\n\n" if blank_before else "\n") + line
         prev, blank_before = line, False
     return out
 
@@ -1031,7 +1016,6 @@ class IGSourceError(RuntimeError):
 
 
 def ig_source_diagnose(ig_id, token, username):
-    """3 اختبارات تحدد سبب فشل قراءة حساب المصدر: التوكن، أو الميزة نفسها، أو حساب المصدر"""
     def call(fields):
         try:
             return requests.get(f"{GRAPH}/{ig_id}", params={"fields": fields, "access_token": token}, timeout=30).json()
@@ -1051,17 +1035,16 @@ def ig_source_diagnose(ig_id, token, username):
     ref = show("Business Discovery على حساب عام معروف (@instagram)", call("business_discovery.username(instagram){username,media_count}"))
     tgt = show(f"Business Discovery على @{username}", call(f"business_discovery.username({username}){{username,media_count}}"))
     if not own:
-        print("[diag] => التوكن ما يقدر يقرأ حساب إنستغرام الخاص بك: ينقصه instagram_basic، أو لم تختر حساب إنستغرام بشاشة الموافقة، أو الحساب مو Professional ومربوط بالصفحة")
+        print("[diag] => التوكن ما يقدر يقرأ حساب إنستغرام الخاص بك")
     elif not ref:
-        print("[diag] => حسابك يُقرأ لكن Business Discovery نفسه مرفوض: أضف الإذن ads_read (أو ads_management) لأن الصفحة غالباً تُدار عبر Business portfolio، وتأكد من pages_read_engagement، وولّد توكن جديد")
+        print("[diag] => Business Discovery نفسه مرفوض: أضف الإذن ads_read")
     elif not tgt:
-        print("[diag] => Business Discovery يشتغل لكن حساب المصدر مرفوض: غالباً حساب شخصي أو خاص أو اليوزرنيم غلط")
+        print("[diag] => Business Discovery يشتغل لكن حساب المصدر مرفوض")
     else:
-        print("[diag] => كل الاختبارات تمر الآن: أعد التشغيل")
+        print("[diag] => كل الاختبارات تمر الآن")
 
 
 def ig_fetch_source(ig_id, token, username, limit=25):
-    """آخر منشورات حساب Business/Creator عام (من الأقدم للأحدث)"""
     last_err = None
     for with_children in (True, False):
         inner = "id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count"
@@ -1080,7 +1063,6 @@ def ig_fetch_source(ig_id, token, username, limit=25):
 
 
 def ig_item_images(it):
-    """روابط الصور (صورة، أو صور الألبوم). فارغة لو فيديو أو ما فيه رابط"""
     mt = it.get("media_type")
     if mt == "CAROUSEL_ALBUM":
         kids = ((it.get("children") or {}).get("data")) or []
@@ -1094,13 +1076,12 @@ def ig_item_images(it):
 
 
 def arab_check(text, gemini_key):
-    """True = يُرفض (كرة عربية). يستدعي Gemini فقط لو النص فيه إشارات عربية"""
     if not ARAB_MARKERS_RE.search(text or ""):
         return False
     out = gemini_generate(ARAB_CHECK_PROMPT + text, gemini_key).strip().upper()
     if out.startswith("OK"):
         return False
-    return True          # ARAB أو رد غير واضح: نرفض احتياطاً
+    return True
 
 
 async def run_ig_source(client, key, cfg, state, gemini_key):
@@ -1115,7 +1096,7 @@ async def run_ig_source(client, key, cfg, state, gemini_key):
         if ig_id:
             st["ig_user_id"] = ig_id
     if not ig_id:
-        print(f"[{key}] [IG-SOURCE] cannot read @{username}: no linked Instagram professional account (or token lacks instagram_basic)")
+        print(f"[{key}] [IG-SOURCE] cannot read @{username}: no linked Instagram professional account")
         raise RuntimeError("Instagram account not linked")
     if st.get("ig_pending") and cfg.get("instagram"):
         ig_retry_pending(key, st, state, ig_id, token)
@@ -1128,13 +1109,13 @@ async def run_ig_source(client, key, cfg, state, gemini_key):
     try:
         media = ig_fetch_source(ig_id, token, username)
     except IGSourceError:
-        if time.time() - st.get("diag_at", 0) > 1800:     # التشخيص مرة كل نصف ساعة فقط
+        if time.time() - st.get("diag_at", 0) > 1800:
             st["diag_at"] = time.time()
             save_state(state)
             ig_source_diagnose(ig_id, token, username)
         raise
     if st.get("last_ts") is None:
-        items = media[-FIRST_RUN_COUNT:]          # أول تشغيل: آخر 5 فقط
+        items = media[-FIRST_RUN_COUNT:]
     else:
         items = [d for d in media if parse_ig_ts(d.get("timestamp", "")) > st["last_ts"]]
     print(f"[{key}] @{username}: {len(items)} new items")
@@ -1212,32 +1193,44 @@ async def run_ig_source(client, key, cfg, state, gemini_key):
         except Exception as e:
             print(f"[{key}] WARNING comment failed for {post_id}: {e}")
 
+        # إنستغرام: نشر منفصل عن التعليق
         if cfg.get("instagram"):
-            caption = f"{body}\n\n{IG_FOOTER}" if body else IG_FOOTER
-            urls = None
-            try:
-                urls = [fb_host_image(page_id, token, fit_for_instagram(b)) for b in images[:10]]
-                res_ig = ig_post(ig_id, token, caption, urls)
-                ig_comment(token, (res_ig or {}).get("id"), IG_COMMENT)
-                print(f"[{key}] [IG OK] {top}")
+            q = ig_quota(ig_id, token)
+            if q and q[0] >= q[1]:
+                print(f"[{key}] [IG skip: quota full {q[0]}/{q[1]}] {top}")
+            else:
+                caption = f"{body}\n\n{IG_FOOTER}" if body else IG_FOOTER
+                urls = None
+                res_ig = None
                 try:
-                    await ledger_add(client, ig_marker)
+                    urls = [fb_host_image(page_id, token, fit_for_instagram(b)) for b in images[:10]]
+                    res_ig = ig_post(ig_id, token, caption, urls)
+                    print(f"[{key}] [IG OK] {top}")
+                    try:
+                        await ledger_add(client, ig_marker)
+                    except Exception as e:
+                        print(f"[{key}] WARNING ledger write failed (IG): {e}")
                 except Exception as e:
-                    print(f"[{key}] WARNING ledger write failed (IG): {e}")
-            except Exception as e:
-                print(f"[{key}] [IG FAILED -> will retry] {top}: {str(e)[:200]}")
-                if urls:
-                    st.setdefault("ig_pending", []).append(
-                        {"id": top, "caption": caption[:2200], "urls": urls, "tries": 1, "ts": int(time.time())})
+                    if ig_is_lock_error(e):
+                        print(f"[{key}] [IG skipped, account locked] {top}: {str(e)[:150]}")
+                    else:
+                        print(f"[{key}] [IG publish failed -> retry later] {top}: {str(e)[:200]}")
+                        if urls:
+                            st.setdefault("ig_pending", []).append({
+                                "id": top, "caption": caption[:2200], "urls": urls,
+                                "tries": 1, "ts": int(time.time())
+                            })
+                if res_ig:
+                    ig_comment(token, res_ig.get("id"), IG_COMMENT)
         save_state(state)
         git_persist_state()
 
 
-# ============ تعليق على المنشورات اليدوية (اللي تنشرها أنت) ============
-MANUAL_COMMENTS = True        # False لإيقاف الميزة
-MANUAL_MIN_AGE = 120          # ثواني: ننتظر قليلاً (منشورات البوت تأخذ تعليقها بثواني)
-MANUAL_MAX_PER_RUN = 5        # حد أعلى للتعليقات بالتشغيلة الواحدة
-MANUAL_MAX_TRIES = 3          # لو فشل التعليق 3 مرات نتركه (مثلاً إذن ناقص)
+# ============ تعليق على المنشورات اليدوية ============
+MANUAL_COMMENTS = True
+MANUAL_MIN_AGE = 120
+MANUAL_MAX_PER_RUN = 5
+MANUAL_MAX_TRIES = 3
 BOT_COMMENT_MARKERS = ("تابعنا على التلكرام", "رابط مشاهدة المباراة", "شاهد الهدف")
 
 
@@ -1254,8 +1247,6 @@ def _ig_has_bot_comment(token, media_id):
 
 
 def handle_manual_posts(state, pkey, page_id, token, ig_id):
-    """يعلّق (نفس تعليق البوت) على منشورات فيسبوك وإنستغرام اللي تنشرها أنت يدوياً (مثل الفيديوهات).
-    يبدأ من لحظة تفعيل الميزة فقط: ما يعلّق على المنشورات القديمة."""
     ms = state.setdefault("_manual", {}).setdefault(pkey, {})
     now = time.time()
     if not ms.get("since"):
@@ -1278,7 +1269,6 @@ def handle_manual_posts(state, pkey, page_id, token, ig_id):
         if tries[pid] >= MANUAL_MAX_TRIES:
             done.add(pid)
 
-    # فيسبوك
     try:
         b = fb_check(requests.get(f"{GRAPH}/{page_id}/posts", params={
             "fields": "id,created_time", "limit": 10, "access_token": token}, timeout=30))
@@ -1297,7 +1287,6 @@ def handle_manual_posts(state, pkey, page_id, token, ig_id):
     except Exception as e:
         print(f"[manual] FB list failed: {str(e)[:160]}")
 
-    # إنستغرام
     if ig_id:
         try:
             b = fb_check(requests.get(f"{GRAPH}/{ig_id}/media", params={
@@ -1318,12 +1307,11 @@ def handle_manual_posts(state, pkey, page_id, token, ig_id):
         except Exception as e:
             print(f"[manual] IG list failed: {str(e)[:160]}")
 
-    ms["fb"], ms["ig"] = list(done_fb)[-200:], list(done_ig)[-200:]
+    ms["fb"], ms["ig"] = list(done_fb)[-100:], list(done_ig)[-100:]
     ms["tries"] = {k: v for k, v in tries.items() if k not in done_fb and k not in done_ig}
 
 
 async def diagnostics(client, gemini_key):
-    """تقرير فحص يطبع بالـ log عند التشغيل اليدوي (Run workflow)"""
     print("=========== [check] تقرير الفحص ===========")
     print(f"[check] version {VERSION}")
     for key, cfg in PAGES.items():
@@ -1344,15 +1332,11 @@ async def diagnostics(client, gemini_key):
                     ig = b.get("instagram_business_account")
                     if ig:
                         print(f"[check] Instagram linked: @{ig.get('username')} (id {ig.get('id')})")
-                        b2 = requests.get(f"{GRAPH}/{ig['id']}/content_publishing_limit", params={
-                            "fields": "quota_usage,config", "access_token": tok}, timeout=30).json()
-                        if "error" in b2:
-                            print(f"[check] Instagram publishing PERMISSION PROBLEM: {str(b2['error'].get('message'))[:200]}")
-                            print("[check] -> ولّد توكن جديد بإذني instagram_basic و instagram_content_publish وحدّث FB_PAGE_TOKEN_1")
-                        else:
-                            print(f"[check] Instagram publishing permission OK: {b2.get('data')}")
+                        q = ig_quota(ig["id"], tok)
+                        if q:
+                            print(f"[check] Instagram quota: {q[0]}/{q[1]}")
                     else:
-                        print("[check] Instagram: NOT linked to this page (حوّل الحساب Professional واربطه بالصفحة) أو التوكن ينقصه instagram_basic")
+                        print("[check] Instagram: NOT linked to this page")
             except Exception as e:
                 print(f"[check] Facebook check failed: {e}")
         if cfg.get("source_type") == "instagram":
@@ -1366,10 +1350,9 @@ async def diagnostics(client, gemini_key):
                         "access_token": tok}, timeout=30).json()
                     if "error" in b3:
                         print(f"[check] Instagram source @{cfg['source_username']} ERROR: {str(b3['error'].get('message'))[:220]}")
-                        print("[check] -> الحساب لازم يكون Business أو Creator وعام. حساب شخصي ما يشتغل مع Business Discovery")
                     else:
                         bd = b3.get("business_discovery", {})
-                        print(f"[check] Instagram source OK: @{bd.get('username')} | followers {bd.get('followers_count')} | posts {bd.get('media_count')}")
+                        print(f"[check] Instagram source OK: @{bd.get('username')} | followers {bd.get('followers_count')}")
             except Exception as e:
                 print(f"[check] Instagram source check failed: {e}")
         else:
@@ -1401,7 +1384,7 @@ async def main():
     client = TelegramClient(StringSession(session), api_id, api_hash)
     await client.connect()
     if not await client.is_user_authorized():
-        print("[ERROR] TG_SESSION is not authorized — generate a new session string")
+        print("[ERROR] TG_SESSION is not authorized")
         sys.exit(1)
 
     state = load_state()
