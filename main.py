@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import re
 import sys
@@ -45,8 +46,9 @@ PAGES = {
         "min_letters": 15,
         "max_age_minutes": 180,
         "min_score": 8,                # ينشر كل خبر درجته >= 8 (تفاعل عالي فقط)
-        "goal_max_age_minutes": 15,
-        "lineup_max_age_minutes": 90,
+        "goal_max_age_minutes": 15,    # أقصى عمر لهدف (بالدقائق)
+        "lineup_max_age_minutes": 90,  # أقصى عمر للتشكيلة (بالدقائق)
+        "result_max_age_minutes": 120, # 👈 أقصى عمر لنتيجة المباراة (بالدقائق)
         "require_photo_and_text": True,
         "live_patterns": [r"نهاية\s+الشوط", r"بين\s+الشوطين", r"إحماء|احماء", r"خلف\s+الأهداف|خلف\s+الاهداف",
                           r"\bhalf[\s-]?time\b", r"\bwarm[\s-]?up\b"],
@@ -56,7 +58,7 @@ PAGES = {
     },
 }
 
-VERSION = "2026-11-06-v12"
+VERSION = "2026-11-06-v13-RESULT"
 STATE_FILE = "state.json"
 FIRST_RUN_COUNT = 5
 COOLDOWN_SECONDS = 600
@@ -82,14 +84,24 @@ LINEUP_FOOTER = (
     "رابط مشاهدة المباراة في اول تعليق"
 )
 LINEUP_COMMENT = "رابط مشاهدة المباراة 👇\nhttps://t.me/FabriAr2/132"
+
 GOAL_FOOTER = (
     "----------------------\n"
     "شاهد الهدف في اول تعليق"
 )
 GOAL_COMMENT = "شاهد الهدف 👇\nhttps://t.me/FabriAr3"
-FLAG_LINE_RE = re.compile(r"^\s*(LINEUP|GOAL)\s*[:：]\s*(YES|NO)[^\n]*\n?", re.I)
+
+# 👈 تم إضافة نتيجة المباراة هنا
+RESULT_FOOTER = (
+    "----------------------\n"
+    "يمكنكم مشاهدة أهداف المباراة عبر الرابط في أول تعليق"
+)
+RESULT_COMMENT = "شاهد الأهداف عبر قناتنا 👇\nhttps://t.me/FabriAr3"
+
+# تم تحديث الـ Regex ليشمل RESULT
+FLAG_LINE_RE = re.compile(r"^\s*(LINEUP|GOAL|RESULT)\s*[:：]\s*(YES|NO)[^\n]*\n?", re.I)
 GOAL_WORDS_RE = re.compile(r"هدف|سجل|سجّل|يسجل|يسجّل|يتقدم|يعادل|يضيف|goal|scor|⚽", re.I)
-FINAL_WORDS_RE = re.compile(r"نهاية\s+المباراة|انتهت|انتهاء\s+المباراة|full[\s-]?time|\bFT\b", re.I)
+FINAL_WORDS_RE = re.compile(r"نهاية\s+المباراة|انتهت|انتهاء\s+المباراة|full[\s-]?time|\bFT\b|النتيجة", re.I)
 LINEUP_LINE_RE = re.compile(r"^\s*LINEUP\s*[:：]\s*(YES|NO)[^\n]*\n?", re.I)
 LINEUP_WORDS_RE = re.compile(r"التشكيل|تشكيل|line-?up|starting\s*(?:xi|11|eleven)|\bxi\b", re.I)
 
@@ -131,7 +143,11 @@ PROMPTS = {
 - مقبول: التشكيلة الرسمية أو المتوقعة للمباراة (درجة 8 إذا لنادٍ كبير أو نجم أو مباراة مهمة، وإلا 6).
 - نتيجة نهاية المباراة لمباراة غير مهمة: SCORE: 2.
 
-الصيغة: السطر الأول SCORE: الرقم. إذا كان المنشور تشكيلة (رسمية أو متوقعة) لمباراة محددة لم تبدأ بعد فاكتب سطراً ثانياً LINEUP: YES. وإذا لم يكن كذلك، أو كانت المباراة بدأت أو انتهت، فلا تكتب هذا السطر أبداً. وإذا كان المنشور يخبر عن هدف سُجّل للتو في مباراة تُلعب الآن فاكتب بدل ذلك سطراً ثانياً GOAL: YES (ولا تكتبه لنتيجة نهاية المباراة ولا لأخبار عن أهداف سابقة أو إحصائيات). لا تكتب أكثر من سطر واحد من هذين السطرين. ثم اكتب المنشور بالعربية بأسلوب طبيعي وجذاب (إن كان بالعربية فأعد صياغته بأسلوب أفضل، وإن كان بلغة أخرى فترجمه كأن كاتباً عربياً كتبه).
+الصيغة: السطر الأول SCORE: الرقم. 
+إذا كان المنشور تشكيلة (رسمية أو متوقعة) لمباراة محددة لم تبدأ بعد فاكتب سطراً ثانياً LINEUP: YES. 
+وإذا كان المنشور يخبر عن هدف سُجّل للتو في مباراة تُلعب الآن فاكتب سطراً ثانياً GOAL: YES. 
+وإذا كان المنشور يخبر عن **نتيجة نهائية للمباراة** (مثل: انتهت 2-1، فوز ريال مدريد 3-0، النتيجة النهائية)، فاكتب سطراً ثانياً RESULT: YES.
+لا تكتب أكثر من سطر واحد من هذه السطور الثلاثة. ثم اكتب المنشور بالعربية بأسلوب طبيعي وجذاب (إن كان بالعربية فأعد صياغته بأسلوب أفضل، وإن كان بلغة أخرى فترجمه كأن كاتباً عربياً كتبه).
 - حافظ على الأسماء والأرقام والحقائق ولا تضف معلومات من عندك.
 - اكتب بصيغة المصدر نفسه، كأنك أنت فابريزيو رومانو ولكن بالعربي: لا تذكر اسم فابريزيو رومانو أبداً، ولا تنسب الخبر لأي أحد (ممنوع «يؤكد» و«يقول» و«يكشف» و«وفقاً لـ» و«بحسب» و«نقلاً عن»). اكتب الخبر مباشرة، مثال: «جود بيلينغهام يجدد عقده مع ريال مدريد حتى يونيو 2031».
 - حافظ على تقسيم الأسطر.
@@ -355,7 +371,7 @@ def ai_process(raw, mode, gemini_key, min_score=0):
         return None, "ad", None, None
     if mode in SCORED_MODES:
         first_line = out.split("\n", 1)[0]
-        mk = re.search(r"(LINEUP|GOAL)\s*[:：]\s*YES", first_line, re.I)
+        mk = re.search(r"(LINEUP|GOAL|RESULT)\s*[:：]\s*YES", first_line, re.I)
         if mk:
             kind = mk.group(1).lower()
         score, out = parse_score(out)
@@ -364,7 +380,10 @@ def ai_process(raw, mode, gemini_key, min_score=0):
             if m.group(2).upper() == "YES" and not kind:
                 kind = m.group(1).lower()
             out = out[m.end():].strip()
-        out = re.sub(r"(?im)^\s*(LINEUP|GOAL)\s*[:：].*$\n?", "", out).strip()
+        
+        # تنظيف أي سطر توجيه متبقي
+        out = re.sub(r"(?im)^\s*(LINEUP|GOAL|RESULT)\s*[:：].*$\n?", "", out).strip()
+        
         if out.upper().startswith("SKIP"):
             return None, "ad", None, None
         if mode == "translate_ar" and "here we go" in raw.lower():
@@ -389,6 +408,9 @@ def ai_process(raw, mode, gemini_key, min_score=0):
         kind = None
     elif kind == "goal" and (not GOAL_WORDS_RE.search(both) or FINAL_WORDS_RE.search(both)):
         kind = None
+    elif kind == "result" and not FINAL_WORDS_RE.search(both):
+        kind = None
+        
     if kind:
         print(f"[match] post kind: {kind}")
     return out, None, kind, score
@@ -469,7 +491,6 @@ IG_LOCK_SUBCODES = {2207027, 2207042, 2207069}
 
 
 def ig_is_lock_error(exc):
-    """True لو الخطأ قفل حساب (مو مؤقت): ما نضيفه لـ pending"""
     s = str(exc)
     for c in IG_LOCK_CODES:
         if f"'code': {c}" in s or f'"code": {c}' in s:
@@ -481,7 +502,6 @@ def ig_is_lock_error(exc):
 
 
 def ig_quota(ig_id, token):
-    """(usage, total) أو None لو فشل الاستعلام"""
     try:
         b = fb_check(requests.get(
             f"{GRAPH}/{ig_id}/content_publishing_limit",
@@ -581,7 +601,6 @@ def ig_post(ig_id, token, caption, image_urls):
 
 
 def ig_comment(token, media_id, message):
-    """تعليق على منشور إنستغرام. لا يرمي خطأ أبداً."""
     if not media_id:
         print("[IG] WARNING comment skipped: no media id returned")
         return False
@@ -599,7 +618,6 @@ def ig_comment(token, media_id, message):
 
 
 def ig_retry_pending(key, st, state, ig_id, token):
-    """إعادة محاولة منشورات إنستغرام اللي فشل نشرها نفسه (مو اللي نُشر وفشل تعليقه)."""
     pending = st.get("ig_pending", [])
     if not pending:
         return
@@ -610,7 +628,6 @@ def ig_retry_pending(key, st, state, ig_id, token):
     keep = []
     for item in pending:
         age = time.time() - item.get("ts", 0)
-        # URLs من FB CDN تنتهي عادة في ساعة
         if age > 3600 or item.get("tries", 0) >= IG_MAX_TRIES:
             print(f"[{key}] [IG GIVE UP age={int(age)}s tries={item.get('tries')}] {item.get('id')}")
             continue
@@ -631,7 +648,6 @@ def ig_retry_pending(key, st, state, ig_id, token):
 
 # ============ سجل النشر ============
 LEDGER_LIMIT = 500
-
 
 async def ledger_load(client):
     try:
@@ -748,7 +764,7 @@ async def fetch_new(client, source, last_id):
 
 
 def too_late_reason(cfg, kind, dates):
-    key = {"goal": "goal_max_age_minutes", "lineup": "lineup_max_age_minutes"}.get(kind)
+    key = {"goal": "goal_max_age_minutes", "lineup": "lineup_max_age_minutes", "result": "result_max_age_minutes"}.get(kind)
     limit = cfg.get(key, 0) if key else 0
     if not limit or not dates:
         return None
@@ -888,8 +904,11 @@ async def run_page(client, key, cfg, state, gemini_key):
             fb_footer, fb_comment_text = LINEUP_FOOTER, LINEUP_COMMENT
         elif match_kind == "goal":
             fb_footer, fb_comment_text = GOAL_FOOTER, GOAL_COMMENT
+        elif match_kind == "result": # 👈 إضافة شرط نتيجة المباراة
+            fb_footer, fb_comment_text = RESULT_FOOTER, RESULT_COMMENT
         else:
             fb_footer, fb_comment_text = FOOTER, FIRST_COMMENT
+        
         text = f"{text}\n\n{fb_footer}" if text else fb_footer
 
         try:
@@ -930,7 +949,6 @@ async def run_page(client, key, cfg, state, gemini_key):
                     caption = f"{body}\n\n{IG_FOOTER}" if body else IG_FOOTER
                     urls = None
                     res_ig = None
-                    # 1) النشر على إنستغرام
                     try:
                         urls = [fb_host_image(page_id, token, fit_for_instagram(b)) for b in images[:10]]
                         res_ig = ig_post(ig_id, token, caption, urls)
@@ -950,7 +968,7 @@ async def run_page(client, key, cfg, state, gemini_key):
                                     "id": top, "caption": caption[:2200], "urls": urls,
                                     "tries": 1, "ts": int(time.time())
                                 })
-                    # 2) التعليق: منفصل تماماً
+                    # التعليق: منفصل تماماً
                     if res_ig:
                         ig_comment(token, res_ig.get("id"), IG_COMMENT)
         save_state(state)
@@ -1231,7 +1249,7 @@ MANUAL_COMMENTS = True
 MANUAL_MIN_AGE = 120
 MANUAL_MAX_PER_RUN = 5
 MANUAL_MAX_TRIES = 3
-BOT_COMMENT_MARKERS = ("تابعنا على التلكرام", "رابط مشاهدة المباراة", "شاهد الهدف")
+BOT_COMMENT_MARKERS = ("تابعنا على التلكرام", "رابط مشاهدة المباراة", "شاهد الهدف", "شاهد الأهداف")
 
 
 def _fb_has_bot_comment(token, post_id):
